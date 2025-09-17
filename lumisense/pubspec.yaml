@@ -1,5 +1,5 @@
 name: lumisense
-description: "A new Flutter project."
+description: "LumiSense - A Proactive AI Co-Pilot for the Visually Impaired. Intelligent navigation assistance with real-time obstacle detection, text reading, object recognition, and integrated services for enhanced independence."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
