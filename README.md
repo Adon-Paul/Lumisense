@@ -1,5 +1,4 @@
 # Lumisense
-Final Year Project
 
 
 # LumiSense 🌟
