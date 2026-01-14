@@ -1,6 +1,3 @@
-# Lumisense
-
-
 # LumiSense 🌟
 
 **A Proactive AI Co-Pilot for the Visually Impaired**
