@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>LumiSense needs camera access to read text, identify objects, and describe surroundings.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>LumiSense needs microphone access for voice commands and hands-free control.</string>
 </dict>
 </plist>

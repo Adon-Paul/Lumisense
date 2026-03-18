@@ -46,7 +46,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                   color: AppTheme.cardBackground,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: AppTheme.textHint.withOpacity(0.2),
+                    color: AppTheme.textHint.withValues(alpha: 0.2),
                     width: 1,
                   ),
                 ),
@@ -105,7 +105,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                           child: Container(
                             padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: AppTheme.darkBackground.withOpacity(0.8),
+                              color: AppTheme.darkBackground.withValues(alpha: 0.8),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Row(

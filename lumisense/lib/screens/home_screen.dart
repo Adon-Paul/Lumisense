@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lumisense/utils/theme.dart';
 import 'caregiver_dashboard.dart';
+import 'camera_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,47 +13,11 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final bool _isVoiceCommandsActive = true;
 
-  void _describeSurroundings() {
-    // Simulate scene description
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.cardBackground,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.camera_alt,
-              color: AppTheme.primaryYellow,
-              size: 48,
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Analyzing Your Surroundings',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Please hold your device steady while we analyze the scene...',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppTheme.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 24),
-            LinearProgressIndicator(
-              color: AppTheme.primaryYellow,
-              backgroundColor: AppTheme.textHint,
-            ),
-            SizedBox(height: 24),
-          ],
-        ),
+  void _openCameraLiveView() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const CameraScreen(),
       ),
     );
   }
@@ -114,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       // Main action button
                       GestureDetector(
-                        onTap: _describeSurroundings,
+                        onTap: _openCameraLiveView,
                         child: Container(
                           width: 280,
                           height: 280,
@@ -123,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.primaryYellow.withOpacity(0.3),
+                                color: AppTheme.primaryYellow.withValues(alpha: 0.3),
                                 blurRadius: 20,
                                 spreadRadius: 0,
                               ),
@@ -162,38 +127,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           _buildQuickButton(
                             icon: Icons.text_fields,
                             label: 'Read Text',
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Text reading mode activated'),
-                                  backgroundColor: AppTheme.primaryYellow,
-                                ),
-                              );
-                            },
+                            onTap: _openCameraLiveView,
                           ),
                           _buildQuickButton(
                             icon: Icons.search,
                             label: 'Find Objects',
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Object detection mode activated'),
-                                  backgroundColor: AppTheme.primaryYellow,
-                                ),
-                              );
-                            },
+                            onTap: _openCameraLiveView,
                           ),
                           _buildQuickButton(
                             icon: Icons.navigation,
                             label: 'Navigate',
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Navigation mode activated'),
-                                  backgroundColor: AppTheme.primaryYellow,
-                                ),
-                              );
-                            },
+                            onTap: _openCameraLiveView,
                           ),
                         ],
                       ),
@@ -333,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: AppTheme.cardBackground,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppTheme.textHint.withOpacity(0.3),
+                  color: AppTheme.textHint.withValues(alpha: 0.3),
                   width: 1,
                 ),
               ),
