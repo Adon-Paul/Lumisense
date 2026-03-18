@@ -77,7 +77,7 @@ class TtsService {
             IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
             IosTextToSpeechAudioCategoryOptions.mixWithOthers,
           ],
-          IosTextToSpeechOutputAudioDevice.speaker,
+          IosTextToSpeechAudioMode.voicePrompt,
         );
       }
 

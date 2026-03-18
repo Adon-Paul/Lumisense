@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  sdk: '>=3.10.0 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -42,8 +42,8 @@ dependencies:
   provider: ^6.1.2
   
   # Camera, ML, and location
-  google_mlkit_text_recognition: ^0.14.0
-  google_mlkit_object_detection: ^0.14.0
+  google_mlkit_text_recognition: ^0.15.1
+  google_mlkit_object_detection: ^0.15.1
   geolocator: ^13.0.0
   url_launcher: ^6.3.0
   path_provider: ^2.1.0
@@ -52,22 +52,21 @@ dependencies:
   permission_handler: ^11.3.1
   
   # Audio and Speech
-  flutter_tts: ^4.0.2
+  flutter_tts: ^4.2.5
   speech_to_text: ^7.0.0
-  audioplayers: ^6.0.0
   
   # Haptic Feedback (temporarily disabled for build compatibility)
   # vibration: ^1.8.4
   
   # Camera and Image Processing
   camera: ^0.10.5+9
-  image: ^4.1.7
+  image: ^4.8.0
   
   # HTTP and Networking
-  http: ^1.2.1
+  http: ^1.6.0
   
   # Local Storage
-  shared_preferences: ^2.2.3
+  shared_preferences: ^2.5.4
   flutter_secure_storage: ^9.2.2
   
   # Utils

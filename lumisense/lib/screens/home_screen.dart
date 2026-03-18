@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import 'package:lumisense/providers/settings_provider.dart';
+import 'package:lumisense/services/sos_service.dart';
+import 'package:lumisense/services/tts_service.dart';
 import 'package:lumisense/utils/theme.dart';
-import 'caregiver_dashboard.dart';
 import 'camera_screen.dart';
+import 'caregiver_dashboard.dart';
+import 'history_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,15 +19,44 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final bool _isVoiceCommandsActive = true;
+  @override
+  void initState() {
+    super.initState();
+    // Announce screen to visually impaired users
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<TtsService>().speak(
+          'Home screen. Tap the large button to describe your surroundings, '
+          'or use the quick buttons below.',
+        );
+      }
+    });
+  }
 
   void _openCameraLiveView() {
+    HapticFeedback.heavyImpact();
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const CameraScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const CameraScreen()),
     );
+  }
+
+  Future<void> _onSosTap() async {
+    HapticFeedback.heavyImpact();
+    final TtsService tts = context.read<TtsService>();
+    final SettingsProvider settings = context.read<SettingsProvider>();
+
+    if (!settings.hasEmergencyContact) {
+      await tts.speak('No emergency contact set. Please add one in Settings.');
+      return;
+    }
+
+    await tts.speak('Sending emergency message.');
+    final SosResult result =
+        await SosService.sendEmergencySms(settings.emergencyContact);
+    if (mounted) {
+      await tts.speak(result.message);
+    }
   }
 
   @override
@@ -28,102 +65,108 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppTheme.darkBackground,
       body: SafeArea(
         child: Column(
-          children: [
-            // Status bar
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          children: <Widget>[
+            // ── Header ──────────────────────────────────────────────────
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Row(
-                children: [
-                  // Connection status
-                  Icon(
-                    Icons.wifi,
-                    color: AppTheme.success,
-                    size: 16,
+                children: <Widget>[
+                  ExcludeSemantics(
+                    child: Icon(Icons.lightbulb_outline,
+                        color: AppTheme.primaryYellow, size: 24),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Text(
-                    'SYSTEM CONNECTED',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppTheme.success,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
+                    'LumiSense',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
-                  Spacer(),
-                  // Battery indicator
-                  Icon(
-                    Icons.battery_5_bar,
-                    color: AppTheme.textPrimary,
-                    size: 16,
-                  ),
-                  SizedBox(width: 4),
-                  Text(
-                    '85%',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppTheme.textPrimary,
-                      fontWeight: FontWeight.w500,
+                  const Spacer(),
+                  // Settings gear
+                  Semantics(
+                    label: 'Settings',
+                    button: true,
+                    child: IconButton(
+                      icon: const Icon(Icons.settings,
+                          color: AppTheme.textSecondary),
+                      onPressed: () {
+                        HapticFeedback.mediumImpact();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const SettingsScreen()),
+                        );
+                      },
                     ),
                   ),
                 ],
               ),
             ),
-            
-            // Main content area
+
+            // ── Main content ────────────────────────────────────────────
             Expanded(
               child: Center(
                 child: Padding(
-                  padding: EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(24),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Main action button
-                      GestureDetector(
-                        onTap: _openCameraLiveView,
-                        child: Container(
-                          width: 280,
-                          height: 280,
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryYellow,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.primaryYellow.withValues(alpha: 0.3),
-                                blurRadius: 20,
-                                spreadRadius: 0,
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.remove_red_eye_outlined,
-                                size: 64,
-                                color: AppTheme.darkBackground,
-                              ),
-                              SizedBox(height: 16),
-                              Text(
-                                'Describe My\nSurroundings',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  color: AppTheme.darkBackground,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 20,
-                                  height: 1.2,
+                    children: <Widget>[
+                      // ── Large action button ───────────────────────────
+                      Semantics(
+                        label:
+                            'Describe my surroundings. Opens camera for AI scene description.',
+                        button: true,
+                        child: GestureDetector(
+                          onTap: _openCameraLiveView,
+                          child: Container(
+                            width: 280,
+                            height: 280,
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryYellow,
+                              shape: BoxShape.circle,
+                              boxShadow: <BoxShadow>[
+                                BoxShadow(
+                                  color: AppTheme.primaryYellow
+                                      .withValues(alpha: 0.3),
+                                  blurRadius: 20,
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                const Icon(Icons.remove_red_eye_outlined,
+                                    size: 64,
+                                    color: AppTheme.darkBackground),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Describe My\nSurroundings',
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(
+                                        color: AppTheme.darkBackground,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 20,
+                                        height: 1.2,
+                                      ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                      
-                      SizedBox(height: 60),
-                      
-                      // Quick access buttons
+
+                      const SizedBox(height: 40),
+
+                      // ── Quick access buttons ──────────────────────────
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
+                        children: <Widget>[
                           _buildQuickButton(
                             icon: Icons.text_fields,
                             label: 'Read Text',
@@ -135,9 +178,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             onTap: _openCameraLiveView,
                           ),
                           _buildQuickButton(
-                            icon: Icons.navigation,
-                            label: 'Navigate',
-                            onTap: _openCameraLiveView,
+                            icon: Icons.sos,
+                            label: 'SOS',
+                            onTap: _onSosTap,
+                            color: AppTheme.error,
                           ),
                         ],
                       ),
@@ -146,111 +190,53 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            
-            // Voice commands indicator
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.mic,
-                    color: _isVoiceCommandsActive ? AppTheme.primaryYellow : AppTheme.textSecondary,
-                    size: 16,
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    'Voice Commands Active',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: _isVoiceCommandsActive ? AppTheme.primaryYellow : AppTheme.textSecondary,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
+
+      // ── Bottom navigation ─────────────────────────────────────────────
       bottomNavigationBar: Container(
         color: AppTheme.darkBackground,
-        padding: EdgeInsets.only(bottom: 16, top: 8),
+        padding: const EdgeInsets.only(bottom: 16, top: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            // Home icon (active)
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryYellow,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.home,
-                    color: AppTheme.darkBackground,
-                    size: 24,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Home',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: AppTheme.primaryYellow,
-                  ),
-                ),
-              ],
+          children: <Widget>[
+            _buildNavItem(
+              icon: Icons.home,
+              label: 'Home',
+              isActive: true,
+              onTap: () {},
             ),
-            
-            // Caregiver icon (inactive)
-            GestureDetector(
+            _buildNavItem(
+              icon: Icons.history,
+              label: 'History',
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CaregiverDashboard(),
-                  ),
-                );
+                HapticFeedback.mediumImpact();
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const HistoryScreen()));
               },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.people_outline,
-                    color: AppTheme.textSecondary,
-                    size: 24,
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Caregiver',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
             ),
-            
-            // Settings icon (inactive)
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.settings_outlined,
-                  color: AppTheme.textSecondary,
-                  size: 24,
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Settings',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ],
+            _buildNavItem(
+              icon: Icons.people_outline,
+              label: 'Caregiver',
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const CaregiverDashboard()));
+              },
+            ),
+            _buildNavItem(
+              icon: Icons.settings,
+              label: 'Settings',
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const SettingsScreen()));
+              },
             ),
           ],
         ),
@@ -258,43 +244,91 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ─── Quick button with 72dp touch target ───────────────────────────────
+
   Widget _buildQuickButton({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    Color? color,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 80,
-        padding: EdgeInsets.symmetric(vertical: 12),
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: AppTheme.cardBackground,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppTheme.textHint.withValues(alpha: 0.3),
-                  width: 1,
+    final Color fg = color ?? AppTheme.textPrimary;
+
+    return Semantics(
+      label: label,
+      button: true,
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.heavyImpact();
+          onTap();
+        },
+        child: SizedBox(
+          width: 80,
+          height: 80,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: AppTheme.cardBackground,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: (color ?? AppTheme.textHint).withValues(alpha: 0.3),
+                  ),
                 ),
+                child: Icon(icon, color: fg, size: 24),
               ),
-              child: Icon(
-                icon,
-                color: AppTheme.textPrimary,
-                size: 24,
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: TextStyle(color: fg, fontSize: 11),
+                textAlign: TextAlign.center,
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Bottom nav item ──────────────────────────────────────────────────
+
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isActive = false,
+  }) {
+    final Color color =
+        isActive ? AppTheme.primaryYellow : AppTheme.textSecondary;
+
+    return Semantics(
+      label: label,
+      button: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: isActive
+                  ? BoxDecoration(
+                      color: AppTheme.primaryYellow,
+                      borderRadius: BorderRadius.circular(8),
+                    )
+                  : null,
+              child: Icon(icon,
+                  color:
+                      isActive ? AppTheme.darkBackground : AppTheme.textSecondary,
+                  size: 24),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(
               label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: AppTheme.textSecondary,
-                fontSize: 11,
-              ),
-              textAlign: TextAlign.center,
+              style: TextStyle(color: color, fontSize: 10),
             ),
           ],
         ),

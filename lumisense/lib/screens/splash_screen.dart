@@ -1,9 +1,54 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:lumisense/services/tts_service.dart';
 import 'package:lumisense/utils/theme.dart';
+import 'home_screen.dart';
 import 'onboarding_screen.dart';
 
-class SplashScreen extends StatelessWidget {
+/// Key used in SharedPreferences to track whether onboarding is complete.
+const String kHasOnboarded = 'hasOnboarded';
+
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _runSplashSequence();
+  }
+
+  Future<void> _runSplashSequence() async {
+    // Speak welcome message — spec: "Splash Screen (app name + tagline spoken aloud)"
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    final TtsService tts = context.read<TtsService>();
+    await tts.speak('Welcome to LumiSense. Your world, in focus.');
+
+    // Wait for TTS to finish + a brief pause
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+
+    // Auto-navigate for returning users
+    final SharedPreferences prefs = context.read<SharedPreferences>();
+    final bool hasOnboarded = prefs.getBool(kHasOnboarded) ?? false;
+
+    if (hasOnboarded) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+    }
+    // Otherwise stay on splash — user taps a button to proceed.
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,134 +58,126 @@ class SplashScreen extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
-            children: [
-              // Status bar area spacer
+            children: <Widget>[
               const SizedBox(height: 60),
-              
-              // Main content - centered
+
+              // ── Logo + branding ───────────────────────────────────────
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Logo and branding
-                    Column(
-                      children: [
-                        // LumiSense logo icon
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryYellow,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Icon(
-                            Icons.lightbulb_outline,
-                            size: 48,
-                            color: AppTheme.darkBackground,
-                          ),
+                  children: <Widget>[
+                    Semantics(
+                      label: 'LumiSense logo',
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryYellow,
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        
-                        const SizedBox(height: 24),
-                        
-                        // LumiSense text
-                        Text(
-                          'LumiSense',
-                          style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                            fontSize: 36,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                          ),
+                        child: const Icon(
+                          Icons.lightbulb_outline,
+                          size: 48,
+                          color: AppTheme.darkBackground,
                         ),
-                        
-                        const SizedBox(height: 12),
-                        
-                        // Tagline
-                        Text(
-                          'Your world, in focus.',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: AppTheme.textSecondary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                    
-                    // Spacer to push buttons to bottom
+                    const SizedBox(height: 24),
+                    Text(
+                      'LumiSense',
+                      style:
+                          Theme.of(context).textTheme.displayLarge?.copyWith(
+                                fontSize: 36,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                              ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Your world, in focus.',
+                      style:
+                          Theme.of(context).textTheme.titleLarge?.copyWith(
+                                color: AppTheme.textSecondary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w400,
+                              ),
+                    ),
                     const SizedBox(height: 120),
                   ],
                 ),
               ),
-              
-              // Bottom buttons
+
+              // ── Buttons ────────────────────────────────────────────────
               Column(
-                children: [
-                  // Set Up My LumiSense button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const OnboardingScreen(),
+                children: <Widget>[
+                  Semantics(
+                    label: 'Set up LumiSense. Tap to begin first-time setup.',
+                    button: true,
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 72,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          HapticFeedback.heavyImpact();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const OnboardingScreen()),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryYellow,
+                          foregroundColor: AppTheme.darkBackground,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryYellow,
-                        foregroundColor: AppTheme.darkBackground,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ),
-                      child: Text(
-                        'Set Up My LumiSense',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppTheme.darkBackground,
-                          fontWeight: FontWeight.w600,
+                        child: Text(
+                          'Set Up My LumiSense',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                color: AppTheme.darkBackground,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                       ),
                     ),
                   ),
-                  
                   const SizedBox(height: 16),
-                  
-                  // Assist a Loved One button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        // Navigate to caregiver setup
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Caregiver setup coming soon'),
-                            backgroundColor: AppTheme.primaryYellow,
+                  Semantics(
+                    label: 'Assist a loved one. Opens caregiver setup.',
+                    button: true,
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 72,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          HapticFeedback.heavyImpact();
+                          Navigator.pushNamed(context, '/caregiver');
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.textSecondary,
+                          side: const BorderSide(
+                              color: AppTheme.textSecondary, width: 1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        );
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textSecondary,
-                        side: const BorderSide(
-                          color: AppTheme.textSecondary,
-                          width: 1,
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        'Assist a Loved One',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppTheme.textSecondary,
-                          fontWeight: FontWeight.w500,
+                        child: Text(
+                          'Assist a Loved One',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                color: AppTheme.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
                         ),
                       ),
                     ),
                   ),
-                  
                   const SizedBox(height: 32),
                 ],
               ),

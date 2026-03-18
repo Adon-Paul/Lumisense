@@ -211,13 +211,8 @@ class SettingsProvider extends ChangeNotifier {
   }
 }
 
-/// Convenience extension to discard a future intentionally.
-extension on Future<void> {
-  // ignore: unused_element
-  void get unawaited => then((_) {}, onError: (_) {});
-}
-
-// Standalone helper for use inside updateSettings.
+/// Discards a [Future] intentionally without waiting for it.
+/// Mirrors `dart:async`'s `unawaited` but swallows errors as well.
 void unawaited(Future<void> future) {
   future.then((_) {}).catchError((_) {});
 }
