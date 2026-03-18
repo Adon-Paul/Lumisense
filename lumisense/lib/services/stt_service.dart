@@ -9,6 +9,7 @@ enum VoiceCommand {
   readText,
   identifyObjects,
   describeScene,
+  navigation,
   help,
   sos,
   stop,
@@ -136,16 +137,33 @@ class SttService {
     // Identify / object detection
     if (lower.contains('identify') ||
         lower.contains('what is') ||
+        lower.contains('what are') ||
+        lower.contains('what\'s in front') ||
+        lower.contains('what is in front') ||
+        lower.contains('what can i see') ||
+        lower.contains('what do i see') ||
+        lower.contains("what's around") ||
         lower.contains('find object') ||
         lower.contains('detect')) {
       return VoiceCommand.identifyObjects;
     }
 
+    // Navigation mode toggle
+    if (lower.contains('navigate') ||
+        lower.contains('navigation') ||
+        lower.contains('guide me') ||
+        lower.contains('walk')) {
+      return VoiceCommand.navigation;
+    }
+
     // Describe / scene description
     if (lower.contains('describe') ||
         lower.contains('what do you see') ||
+        lower.contains('tell me about') ||
+        lower.contains('explain') ||
         lower.contains('scene') ||
         lower.contains('surroundings') ||
+        lower.contains('around me') ||
         lower.contains('look')) {
       return VoiceCommand.describeScene;
     }
@@ -174,8 +192,9 @@ class SttService {
   static String get helpText =>
       'Available commands: '
       'Say "Read" to read text. '
-      'Say "Identify" to find objects. '
-      'Say "Describe" to describe the scene. '
+      'Say "What\'s in front of me" or "Identify" to find objects. '
+      'Say "Navigate" to toggle navigation mode. '
+      'Say "Describe" or "Tell me about this" for a scene description. '
       'Say "Help" for this list. '
       'Say "Emergency" for SOS. '
       'Say "Stop" to cancel.';

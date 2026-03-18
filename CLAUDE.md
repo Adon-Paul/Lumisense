@@ -2,25 +2,27 @@
 
 ## What This Project Is
 
-LumiSense is a purely software-based Flutter mobile app that acts as a proactive AI co-pilot for the visually impaired. It uses the phone's own built-in camera + on-device AI + cloud AI to help blind/low-vision users read text, recognize objects, and navigate daily life — all from their existing smartphone with zero external hardware.
+LumiSense is a purely software-based Flutter mobile app that acts as a proactive AI co-pilot for the visually impaired. It uses the phone's built-in camera + on-device AI + cloud AI to help blind/low-vision users read text, recognize objects, navigate surroundings, and get emergency help — all from their existing smartphone with zero external hardware.
 
 This is a final-year B.Tech CS project. The goal is a working demo prototype — not a commercial product.
 
 ---
 
-## Architecture (Simple)
+## Architecture
 
 ```
 [Phone Camera] → [Flutter App] → [AI Layer] → [TTS Audio Output]
                                       │
                          ┌────────────┴────────────┐
                     On-Device AI               Cloud AI
-                    (Google ML Kit)        (Gemini API)
-                    - OCR/Text             - Scene description
-                    - Object labels        - Complex Q&A about surroundings
+                    (Google ML Kit)        (Gemini 2.0 Flash)
+                    (YOLOv8 via TFLite)    - Scene description
+                    - OCR/Text             - Complex Q&A
+                    - Object detection
+                    - Real-time navigation
 ```
 
-Everything runs on the user's phone. No ESP32, no wearables, no external hardware whatsoever.
+Everything runs on the user's phone. No ESP32, no wearables, no external hardware.
 
 ---
 
@@ -28,70 +30,44 @@ Everything runs on the user's phone. No ESP32, no wearables, no external hardwar
 
 | Layer | Technology |
 |---|---|
-| App Framework | Flutter (Dart) |
+| App Framework | Flutter (Dart), SDK >=3.10.0 |
 | On-Device OCR | Google ML Kit (`google_mlkit_text_recognition`) |
-| On-Device Objects | Google ML Kit (`google_mlkit_object_detection`) OR TFLite with MobileNet/SSD |
-| Cloud AI | Google Gemini API (send image → get rich scene description) |
-| Voice Output | `flutter_tts` (Text-to-Speech) |
-| Voice Input | `speech_to_text` (for voice commands) |
-| Camera | `camera` package (phone's built-in camera) |
-| State Management | Provider or Riverpod |
-| Platform | Android-first (iOS optional) |
+| Object Detection | YOLOv8n via TFLite (`flutter_vision`) — 80 COCO classes |
+| Cloud AI | Google Gemini 2.0 Flash API (REST + base64 JPEG) |
+| Voice Output | `flutter_tts` (Text-to-Speech, singleton) |
+| Voice Input | `speech_to_text` v7.x (voice commands) |
+| Camera | `camera` ^0.11.2 (back camera, medium res, YUV420) |
+| State Management | Provider (`MultiProvider`) |
+| Storage | `SharedPreferences` + `FlutterSecureStorage` (API key) |
+| GPS/SOS | `geolocator` + `url_launcher` (SMS) |
+| Platform | Android-first (compileSdk 36, targetSdk 36) |
 
 ---
 
-## Core Features to Build (Priority Order)
+## Core Features (Implemented)
 
-### P0 — Must Have (build these first)
+### Phase 1 — Foundation ✅
+1. Camera live feed with permission handling
+2. OCR text reading via ML Kit (offline, reading-order sorted)
+3. TTS voice output (singleton, queue management, speech rate control)
+4. Accessibility-first UI (72dp buttons, Semantics, HapticFeedback)
+5. Splash → Onboarding → Home → Camera screen flow
 
-1. **Camera Live Feed Screen**
-   - Full-screen camera preview
-   - Large, accessible action buttons at the bottom
-   - Tap anywhere or voice command to trigger AI
+### Phase 2 — Intelligence ✅
+1. Gemini 2.0 Flash scene description (base64 JPEG, timeout handling)
+2. Voice commands via STT (read, identify, describe, navigate, help, SOS, stop)
+3. SOS emergency SMS with GPS coordinates
+4. Settings screen (TTS rate/volume/pitch, emergency contact, API key)
+5. History logging for all detection/OCR/description results
 
-2. **Instant Text Reader (OCR)**
-   - User points camera at text → app reads it aloud via TTS
-   - Uses Google ML Kit on-device (works offline, zero latency)
-   - Handles: menus, signs, labels, medicine bottles, documents
-
-3. **Object Recognition**
-   - User points camera → app identifies objects and speaks labels
-   - On-device via ML Kit or TFLite (MobileNet SSD)
-   - Speaks: "Chair ahead", "Bottle on table", "Person detected"
-
-4. **Scene Description (Cloud AI)**
-   - User taps "Describe" button or says "describe"
-   - App captures frame → sends to Gemini API → gets rich text description → speaks it
-   - Example output: "You are in a kitchen. There's a gas stove on your left with a pot on it. A window ahead shows daylight."
-   - **This is the WOW feature for the demo**
-
-5. **Voice Command System**
-   - "Read" → triggers OCR
-   - "What is this?" → triggers object recognition
-   - "Describe" → triggers scene description
-   - "Help" → lists available commands
-   - Always listening or activated by a button
-
-6. **Text-to-Speech Output**
-   - ALL results spoken aloud automatically
-   - Adjustable speech rate
-   - Queue management (don't overlap speech)
-
-### P1 — Nice to Have (if time permits)
-
-1. **SOS / Emergency Button**
-   - Big red button on home screen
-   - Sends SMS with GPS location to preset emergency contact
-   - Simple — just uses `url_launcher` or `telephony` package
-
-2. **Medication Reminder (Simplified)**
-   - User photographs prescription → OCR extracts medicine name
-   - Set a simple local notification reminder
-   - Uses `flutter_local_notifications`
-
-3. **History/Log Screen**
-   - Keeps a log of recent OCR reads and scene descriptions
-   - User can replay any past result via TTS
+### Phase 3 — Real-Time Navigation ✅
+1. **YOLOv8n object detection** — 80 COCO classes, GPU-accelerated via TFLite
+2. **Real-time bounding box overlay** on camera preview
+3. **Navigation mode** — continuous detection with smart TTS announcements
+4. **Object persistence tracking** — only confirmed objects (2+ frames) are announced
+5. **TTS debouncing** — 3-second cooldown, change-only announcements
+6. **FPS indicator** showing live inference speed
+7. **Pause/resume** navigation for tap-based features (Read, Describe)
 
 ---
 
@@ -99,88 +75,46 @@ Everything runs on the user's phone. No ESP32, no wearables, no external hardwar
 
 ```
 App Launch
-  → Splash Screen (app name + tagline spoken aloud)
+  → Splash Screen (TTS welcome, auto-nav for returning users)
+  → Onboarding (name, emergency contact, API key) → sets hasOnboarded
   → Home Dashboard
-      ├── [📷 Camera / Live View]  ← primary screen, always accessible
-      │     ├── [Read Text] button  → OCR → TTS
-      │     ├── [Identify] button   → Object Detection → TTS
-      │     └── [Describe Scene] button → Gemini API → TTS
-      ├── [🆘 SOS] button          → Send emergency SMS
-      ├── [💊 Medication] button    → Reminder setup (P1)
-      ├── [📋 History] button       → Past results (P1)
-      └── [⚙️ Settings]            → Speech rate, emergency contact, Gemini API key
+      ├── [📷 Camera / Live View]  ← primary screen
+      │     ├── [Read] button       → OCR → TTS
+      │     ├── [Identify] button   → YOLO single-shot → TTS
+      │     ├── [Navigate] button   → Toggle real-time YOLO + bounding boxes + TTS
+      │     ├── [Describe] button   → Gemini API → TTS
+      │     ├── [🎤 Voice] button   → STT voice commands
+      │     └── [🆘 SOS] button    → Emergency SMS
+      ├── [⚙️ Settings]            → TTS, contact, API key
+      ├── [📋 History]             → Past results
+      └── [👥 Caregiver]           → Dashboard
 ```
 
 ---
 
-## UI/UX Requirements (Accessibility-First)
+## Navigation Mode — How It Works
 
-- **High contrast** — dark background, bright text/icons (think white-on-black or yellow-on-black)
-- **Large touch targets** — minimum 72dp buttons, ideally bigger
-- **Minimal UI elements** — no clutter, max 3-4 buttons visible at once
-- **Everything has TTS labels** — every screen, every button speaks its purpose on focus
-- **Haptic feedback** on button press (`HapticFeedback.heavyImpact`)
-- **No text-only navigation** — every action reachable by voice or large buttons
-- **Auto-speak results** — never require the user to read something on screen
-- **Semantic labels** on all widgets for TalkBack/VoiceOver
-
----
-
-## Key Implementation Details
-
-### Camera Setup
-```dart
-// Use the camera package, prefer back camera, medium resolution for speed
-// Resolution: ResolutionPreset.medium (720p) — balances quality vs processing speed
-// Image format: YUV420 for ML Kit, JPEG for Gemini API
+```
+Camera 30fps → Image Stream → YoloService.detectOnFrame() → NavigationModeController
+                                     │                              │
+                              flutter_vision                Smart TTS Logic:
+                              (native YUV→RGB,              - Object persistence (2+ frames)
+                               GPU delegate,                - Change-only announcements
+                               built-in NMS)                - 3-second cooldown
+                                     │                      - Object forget after 5s absent
+                                     ↓                              │
+                              BoundingBoxOverlay             TtsService.speak()
+                              (Positioned widgets,           "person and laptop"
+                               color-coded boxes,
+                               label + confidence)
 ```
 
-### OCR (Google ML Kit)
-```dart
-// google_mlkit_text_recognition package
-// Process camera frame → extract text blocks → concatenate → speak via TTS
-// Handle: multiple text blocks, reading order (top-to-bottom, left-to-right)
-// Language: English default, add Hindi if time permits
-```
-
-### Object Detection
-```dart
-// Option A: google_mlkit_object_detection (simpler, fewer labels)
-// Option B: tflite_flutter with MobileNet SSD (more labels, needs model file)
-// Speak top 3-5 detected objects with confidence > 60%
-```
-
-### Scene Description (Gemini API)
-```dart
-// Capture single frame as JPEG
-// Send to Gemini API (gemini-2.0-flash for speed, or gemini-2.0-flash-lite for cost)
-// Prompt: "You are an assistant for a visually impaired person. Describe this scene
-//          in 2-3 clear, concise sentences. Focus on: what objects are present,
-//          their spatial arrangement, any text visible, and potential hazards.
-//          Be specific about directions (left, right, ahead)."
-// Parse response → speak via TTS
-```
-
-### Voice Commands
-```dart
-// speech_to_text package
-// Listen for wake words or run in push-to-talk mode
-// Map recognized text to commands:
-//   contains("read") → triggerOCR()
-//   contains("describe") || contains("what do you see") → triggerSceneDescription()
-//   contains("identify") || contains("what is") → triggerObjectDetection()
-//   contains("help") → speakAvailableCommands()
-//   contains("emergency") || contains("sos") → triggerSOS()
-```
-
-### TTS
-```dart
-// flutter_tts package
-// Set language: en-IN (Indian English) or en-US
-// Default rate: 0.5 (slightly slow for clarity)
-// Queue: stop current speech before starting new result
-// Speak immediately on every AI result — never wait for user action
-```
+### Key Design Decisions:
+- **Flag-based throttling**: Only one frame processed at a time (`_isInferring` flag)
+- **No Dart isolates for YOLO**: `flutter_vision` runs inference natively (C++/Java) off the UI thread
+- **Stream pause/resume**: `takePicture()` requires stopping the stream first
+- **GPU delegate with CPU fallback**: Tries GPU first, falls back to CPU if unsupported
+- **Model preloaded at screen init**: No cold-start delay when toggling navigation
 
 ---
 
@@ -189,135 +123,134 @@ App Launch
 ```
 lumisense/
 ├── lib/
-│   ├── main.dart                     # App entry, theme, routes
-│   ├── app.dart                      # MaterialApp config, accessibility theme
-│   │
+│   ├── main.dart                          # Entry, providers, routes, error handlers
 │   ├── screens/
-│   │   ├── splash_screen.dart        # Animated splash + TTS welcome
-│   │   ├── home_screen.dart          # Main dashboard with big buttons
-│   │   ├── camera_screen.dart        # Live camera + action buttons
-│   │   ├── settings_screen.dart      # Speech rate, contacts, API key
-│   │   ├── history_screen.dart       # Past results log (P1)
-│   │   └── medication_screen.dart    # Medication reminder (P1)
-│   │
+│   │   ├── splash_screen.dart             # TTS welcome + auto-nav
+│   │   ├── onboarding_screen.dart         # Name, contact, API key setup
+│   │   ├── home_screen.dart               # Dashboard with nav buttons
+│   │   ├── camera_screen.dart             # Live camera + YOLO + actions
+│   │   ├── settings_screen.dart           # TTS sliders, contact, API key
+│   │   ├── history_screen.dart            # Past results log
+│   │   └── caregiver_dashboard.dart       # Caregiver info screen
 │   ├── services/
-│   │   ├── tts_service.dart          # Text-to-Speech wrapper (singleton)
-│   │   ├── stt_service.dart          # Speech-to-Text / voice command handler
-│   │   ├── ocr_service.dart          # Google ML Kit text recognition
-│   │   ├── object_detection_service.dart  # ML Kit or TFLite object detection
-│   │   ├── gemini_service.dart       # Gemini API calls for scene description
-│   │   ├── camera_service.dart       # Camera controller management
-│   │   └── sos_service.dart          # Emergency SMS + location
-│   │
+│   │   ├── tts_service.dart               # Singleton TTS wrapper
+│   │   ├── stt_service.dart               # Voice command recognition
+│   │   ├── ocr_service.dart               # ML Kit text recognition
+│   │   ├── yolo_service.dart              # YOLOv8n via flutter_vision
+│   │   ├── navigation_mode_controller.dart # Smart TTS + object tracking
+│   │   ├── gemini_service.dart            # Gemini 2.0 Flash API
+│   │   ├── camera_service.dart            # Camera + image stream
+│   │   ├── sos_service.dart               # Emergency SMS + GPS
+│   │   └── object_detection_service.dart  # [DEPRECATED] ML Kit stub
 │   ├── providers/
-│   │   ├── app_state.dart            # Global app state
-│   │   └── settings_provider.dart    # User preferences
-│   │
+│   │   ├── app_state.dart                 # AppMode, ProcessingState
+│   │   ├── settings_provider.dart         # Prefs + SecureStorage bridge
+│   │   └── history_provider.dart          # History entries
 │   ├── models/
-│   │   ├── detection_result.dart     # Object detection result model
-│   │   ├── ocr_result.dart           # OCR result model
-│   │   └── history_entry.dart        # History log entry
-│   │
+│   │   ├── detection_result.dart          # DetectedObjectItem + bounding box
+│   │   ├── ocr_result.dart                # OcrResult
+│   │   └── history_entry.dart             # HistoryEntry + types
 │   ├── widgets/
-│   │   ├── accessible_button.dart    # Large, high-contrast button with TTS
-│   │   ├── action_bar.dart           # Bottom action buttons on camera screen
-│   │   └── result_overlay.dart       # Shows result text over camera
-│   │
-│   ├── utils/
-│   │   ├── constants.dart            # Colors, sizes, strings
-│   │   ├── accessibility_helpers.dart # Semantic wrappers, TTS helpers
-│   │   └── image_utils.dart          # Frame capture, JPEG conversion
-│   │
-│   └── config/
-│       └── api_keys.dart             # Gemini API key (use --dart-define in prod)
-│
+│   │   └── bounding_box_overlay.dart      # YOLO box renderer + nav indicator
+│   └── utils/
+│       ├── theme.dart                     # AppTheme (dark, yellow accent)
+│       └── image_utils.dart               # JPEG byte utilities
 ├── assets/
-│   ├── models/                       # TFLite model files (if using TFLite)
-│   │   ├── ssd_mobilenet.tflite
-│   │   └── labels.txt
-│   └── sounds/                       # UI sounds (optional)
-│
+│   ├── labels.txt                         # COCO 80 class labels
+│   └── models/
+│       └── yolov8n.tflite                 # YOLOv8 nano model (~12.8 MB)
 ├── android/
-│   └── app/src/main/AndroidManifest.xml  # Camera, microphone, SMS, location permissions
-│
+│   └── app/
+│       ├── build.gradle.kts               # compileSdk 36, aaptOptions, proguard
+│       ├── proguard-rules.pro             # ML Kit + TFLite keep rules
+│       └── src/main/AndroidManifest.xml   # All permissions + ML Kit metadata
+├── scripts/
+│   └── download_model.py                  # Export YOLOv8n to TFLite
 ├── pubspec.yaml
-└── README.md
+└── CLAUDE.md
 ```
 
 ---
 
-## pubspec.yaml Dependencies
+## Key Dependencies (pubspec.yaml)
 
 ```yaml
 dependencies:
-  flutter:
-    sdk: flutter
-  camera: ^0.11.0                           # Camera access
-  google_mlkit_text_recognition: ^0.14.0    # On-device OCR
-  google_mlkit_object_detection: ^0.14.0    # On-device object detection
-  flutter_tts: ^4.2.0                       # Text-to-Speech
-  speech_to_text: ^7.0.0                    # Voice commands
-  http: ^1.2.0                              # For Gemini API calls
-  provider: ^6.1.0                          # State management
-  geolocator: ^13.0.0                       # GPS for SOS
-  url_launcher: ^6.3.0                      # SMS/phone for SOS
-  permission_handler: ^11.3.0               # Runtime permissions
-  shared_preferences: ^2.3.0               # Local settings storage
-  flutter_local_notifications: ^18.0.0     # Medication reminders (P1)
-  path_provider: ^2.1.0                    # Local file storage
-  image: ^4.3.0                            # Image processing
+  camera: ^0.11.2                          # Camera + image stream
+  flutter_vision: ^2.0.0                   # YOLOv8 object detection (TFLite)
+  google_mlkit_text_recognition: ^0.15.1   # On-device OCR
+  flutter_tts: ^4.2.5                      # Text-to-Speech
+  speech_to_text: ^7.0.0                   # Voice commands
+  http: ^1.6.0                             # Gemini API calls
+  provider: ^6.1.2                         # State management
+  geolocator: ^13.0.0                      # GPS for SOS
+  url_launcher: ^6.3.0                     # SMS for SOS
+  permission_handler: ^11.3.1              # Runtime permissions
+  shared_preferences: ^2.5.4              # Local settings
+  flutter_secure_storage: ^9.2.2          # API key storage
+  path_provider: ^2.1.0                   # File paths
+  image: ^4.8.0                           # Image processing
+  intl: ^0.19.0                           # Date formatting
 ```
 
 ---
 
-## Android Permissions Needed
+## Android Configuration
 
+- **compileSdk**: 36
+- **targetSdk**: 36
+- **minSdk**: Flutter default (21)
+- **JDK**: Android Studio bundled JDK (OpenJDK 21) at `C:\Program Files\Android\Android Studio\jbr`
+- **Android SDK**: `C:\Users\adonp\AppData\Local\Android\Sdk`
+- **aaptOptions**: `noCompress += "tflite"` (required for TFLite memory-mapped loading)
+- **ProGuard**: ML Kit language module warnings + TFLite delegate keep rules
+
+### Permissions (AndroidManifest.xml)
 ```xml
-<uses-permission android:name="android.permission.CAMERA" />
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.SEND_SMS" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.VIBRATE" />
+CAMERA, RECORD_AUDIO, SEND_SMS, ACCESS_FINE_LOCATION,
+ACCESS_COARSE_LOCATION, INTERNET, VIBRATE,
+RECEIVE_BOOT_COMPLETED, FOREGROUND_SERVICE
 ```
 
 ---
 
-## Gemini API Integration
+## YOLO Model Setup
 
-```
-Endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent
-Auth: API key as query param ?key=YOUR_KEY
-Send image as base64 in the request body
+The YOLOv8n model file (`assets/models/yolov8n.tflite`) is required for object detection and navigation mode.
 
-Request body:
-{
-  "contents": [{
-    "parts": [
-      {"inlineData": {"mimeType": "image/jpeg", "data": "<base64>"}},
-      {"text": "You are an assistant for a visually impaired person. Describe what you see in 2-3 sentences. Focus on objects, spatial layout, text, and hazards. Use directional cues like left, right, ahead."}
-    ]
-  }]
-}
+### To download/export the model:
+```bash
+# Option 1: Use the provided script (requires Python + ultralytics)
+pip install ultralytics
+python scripts/download_model.py
+
+# Option 2: Manual export
+pip install ultralytics
+python -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='tflite')"
+# Copy the exported yolov8n_float32.tflite to assets/models/yolov8n.tflite
 ```
+
+The model detects 80 COCO classes (person, car, chair, laptop, phone, etc.) and runs at 30+ FPS on Snapdragon 8 Gen 2 with GPU delegate.
 
 ---
 
-## Build Order (Do This Sequence)
+## Build Commands
 
-1. `flutter create lumisense` → set up project skeleton
-2. Add all dependencies to `pubspec.yaml` → `flutter pub get`
-3. Build `tts_service.dart` → test TTS works
-4. Build `camera_service.dart` + `camera_screen.dart` → test camera preview works
-5. Build `ocr_service.dart` → wire to camera → test: point at text, hear it spoken
-6. Build `gemini_service.dart` → wire to camera → test: tap describe, hear scene description
-7. Build `object_detection_service.dart` → wire to camera → test object labels spoken
-8. Build `stt_service.dart` → wire voice commands to trigger OCR/describe/detect
-9. Build `home_screen.dart` → main dashboard with navigation
-10. Build `settings_screen.dart` → speech rate, emergency contact, API key
-11. Build `sos_service.dart` → emergency SMS feature
-12. Polish UI → high contrast theme, large buttons, accessibility labels
-13. Test full flow end-to-end
+```bash
+# Set environment
+export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+export ANDROID_SDK_ROOT="/c/Users/adonp/AppData/Local/Android/Sdk"
+
+# Get dependencies
+flutter pub get
+
+# Run analyzer
+flutter analyze
+
+# Build release APK
+flutter build apk --release
+# Output: build/app/outputs/flutter-apk/app-release.apk (~188 MB)
+```
 
 ---
 
@@ -326,11 +259,11 @@ Request body:
 A working Android app where a visually impaired user (or evaluator simulating one) can:
 
 1. Open the app and hear a welcome message
-2. Point the phone camera at text → tap "Read" → hear the text spoken aloud
-3. Point at objects → tap "Identify" → hear object names
-4. Tap "Describe" → hear a rich AI-generated description of the scene
-5. Say voice commands to do all of the above hands-free
-6. Tap SOS → emergency SMS sent with location
-7. Navigate the entire app via large buttons with voice feedback
-
-That's it. Ship this and the demo is solid.
+2. Point the phone camera at text → tap "Read" → hear text spoken aloud
+3. Point at objects → tap "Identify" → hear 80 COCO object names via YOLO
+4. Tap "Navigate" → see real-time bounding boxes + hear smart announcements
+5. Tap "Describe" → hear Gemini AI's rich scene description
+6. Say voice commands to do all of the above hands-free
+7. Tap SOS → emergency SMS sent with GPS location
+8. Navigate the entire app via large buttons with voice feedback
+9. Walk around with Navigation Mode and hear objects announced as they appear

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +11,7 @@ const String _kSpeechRate = 'speechRate';
 const String _kVolume = 'ttsVolume';
 const String _kPitch = 'ttsPitch';
 const String _kEmergencyContact = 'emergencyContact';
+const String _kPowerReadMode = 'powerReadMode';
 // API key is stored in secure storage, not SharedPreferences.
 const String _kApiKey = 'geminiApiKey';
 
@@ -40,6 +43,7 @@ class SettingsProvider extends ChangeNotifier {
     _volume = _prefs.getDouble(_kVolume) ?? 1.0;
     _pitch = _prefs.getDouble(_kPitch) ?? 1.0;
     _emergencyContact = _prefs.getString(_kEmergencyContact) ?? '';
+    _powerReadMode = _prefs.getBool(_kPowerReadMode) ?? true;
     // API key is loaded asynchronously — call loadApiKey() after construction.
   }
 
@@ -54,6 +58,7 @@ class SettingsProvider extends ChangeNotifier {
   double _pitch = 1.0;
   String _emergencyContact = '';
   String _apiKey = '';
+  bool _powerReadMode = true;
 
   // ─── Getters ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +66,7 @@ class SettingsProvider extends ChangeNotifier {
   double get volume => _volume;
   double get pitch => _pitch;
   String get emergencyContact => _emergencyContact;
+  bool get powerReadMode => _powerReadMode;
 
   /// Returns the in-memory API key. Load it first with [loadApiKey].
   String get apiKey => _apiKey;
@@ -116,6 +122,14 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Enables/disables chunked long-form reading mode for OCR results.
+  Future<void> setPowerReadMode(bool value) async {
+    if (_powerReadMode == value) return;
+    _powerReadMode = value;
+    await _prefs.setBool(_kPowerReadMode, value);
+    notifyListeners();
+  }
+
   // ─── API key (secure storage) ────────────────────────────────────────────────
 
   /// Loads the Gemini API key from secure storage into memory.
@@ -151,6 +165,7 @@ class SettingsProvider extends ChangeNotifier {
     double? pitch,
     String? emergencyContact,
     String? apiKey,
+    bool? powerReadMode,
   }) async {
     bool hasChanges = false;
     final List<Future<void>> ttsWork = [];
@@ -204,6 +219,12 @@ class SettingsProvider extends ChangeNotifier {
       );
     }
 
+    if (powerReadMode != null && _powerReadMode != powerReadMode) {
+      _powerReadMode = powerReadMode;
+      hasChanges = true;
+      prefsWork.add(_prefs.setBool(_kPowerReadMode, powerReadMode));
+    }
+
     if (hasChanges) {
       await Future.wait([...ttsWork, ...prefsWork]);
       notifyListeners();
@@ -211,8 +232,4 @@ class SettingsProvider extends ChangeNotifier {
   }
 }
 
-/// Discards a [Future] intentionally without waiting for it.
-/// Mirrors `dart:async`'s `unawaited` but swallows errors as well.
-void unawaited(Future<void> future) {
-  future.then((_) {}).catchError((_) {});
-}
+// dart:async's unawaited() is used directly — imported above.

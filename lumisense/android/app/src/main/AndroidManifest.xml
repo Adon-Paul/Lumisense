@@ -49,11 +49,12 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- Bundle ML Kit OCR + object detection models at install time
-             so they work offline (no runtime download on first use). -->
+        <!-- Bundle ML Kit OCR model at install time so it works offline
+             (no runtime download on first use). object_detection was removed
+             since ML Kit object detection is replaced by YOLOv8 via TFLite. -->
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"
-            android:value="ocr,object_detection" />
+            android:value="ocr" />
 
     </application>
 

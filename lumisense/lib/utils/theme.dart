@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // LumiSense Brand Colors
-  static const Color primaryYellow = Color(0xFFFFD700);
+  // Electric blue accent replaces the previous yellow accent.
+  static const Color primaryYellow = Color(0xFF00BFFF);
   static const Color darkBackground = Color(0xFF000000);
   static const Color cardBackground = Color(0xFF1A1A1A);
   static const Color textPrimary = Color(0xFFFFFFFF);
@@ -12,16 +12,16 @@ class AppTheme {
   static const Color success = Color(0xFF4CAF50);
   static const Color warning = Color(0xFFFF9800);
   static const Color error = Color(0xFFFF5252);
-  
+
   // Status Colors
   static const Color online = Color(0xFF4CAF50);
   static const Color offline = Color(0xFF757575);
-  
+
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      
+
       // Color Scheme
       colorScheme: const ColorScheme.dark(
         primary: primaryYellow,
@@ -33,102 +33,102 @@ class AppTheme {
         onSurface: textPrimary,
         onError: textPrimary,
       ),
-      
+
       // Scaffold
       scaffoldBackgroundColor: darkBackground,
-      
+
       // AppBar
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         backgroundColor: darkBackground,
         foregroundColor: textPrimary,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
       ),
-      
+
       // Text Theme
-      textTheme: GoogleFonts.interTextTheme().copyWith(
-        displayLarge: GoogleFonts.inter(
+      textTheme: const TextTheme(
+        displayLarge: TextStyle(
           fontSize: 32,
           fontWeight: FontWeight.bold,
           color: textPrimary,
         ),
-        displayMedium: GoogleFonts.inter(
+        displayMedium: TextStyle(
           fontSize: 28,
           fontWeight: FontWeight.bold,
           color: textPrimary,
         ),
-        displaySmall: GoogleFonts.inter(
+        displaySmall: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
-        headlineLarge: GoogleFonts.inter(
+        headlineLarge: TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
-        headlineMedium: GoogleFonts.inter(
+        headlineMedium: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
-        headlineSmall: GoogleFonts.inter(
+        headlineSmall: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
-        titleLarge: GoogleFonts.inter(
+        titleLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
-        titleMedium: GoogleFonts.inter(
+        titleMedium: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
           color: textPrimary,
         ),
-        titleSmall: GoogleFonts.inter(
+        titleSmall: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w500,
           color: textPrimary,
         ),
-        bodyLarge: GoogleFonts.inter(
+        bodyLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.normal,
           color: textPrimary,
         ),
-        bodyMedium: GoogleFonts.inter(
+        bodyMedium: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.normal,
           color: textPrimary,
         ),
-        bodySmall: GoogleFonts.inter(
+        bodySmall: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.normal,
           color: textSecondary,
         ),
-        labelLarge: GoogleFonts.inter(
+        labelLarge: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
           color: textPrimary,
         ),
-        labelMedium: GoogleFonts.inter(
+        labelMedium: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w500,
           color: textSecondary,
         ),
-        labelSmall: GoogleFonts.inter(
+        labelSmall: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w500,
           color: textHint,
         ),
       ),
-      
+
       // Button Themes
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -139,13 +139,13 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: GoogleFonts.inter(
+          textStyle: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
       ),
-      
+
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: textPrimary,
@@ -154,13 +154,13 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: GoogleFonts.inter(
+          textStyle: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w500,
           ),
         ),
       ),
-      
+
       // Input Decoration
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -185,18 +185,18 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: error, width: 2),
         ),
-        hintStyle: GoogleFonts.inter(
+        hintStyle: const TextStyle(
           color: textHint,
           fontSize: 16,
         ),
-        labelStyle: GoogleFonts.inter(
+        labelStyle: const TextStyle(
           color: textSecondary,
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
-      
+
       // Card Theme
       cardTheme: CardThemeData(
         color: cardBackground,
@@ -205,7 +205,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
         ),
       ),
-      
+
       // Bottom Navigation Bar
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: cardBackground,
@@ -228,12 +228,12 @@ class AppStyles {
       width: 1,
     ),
   );
-  
+
   static BoxDecoration get yellowCardDecoration => BoxDecoration(
     color: AppTheme.primaryYellow,
     borderRadius: BorderRadius.circular(16),
   );
-  
+
   static BoxDecoration get gradientDecoration => BoxDecoration(
     gradient: LinearGradient(
       begin: Alignment.topCenter,

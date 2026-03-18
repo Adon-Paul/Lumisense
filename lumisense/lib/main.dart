@@ -35,15 +35,20 @@ Future<void> main() async {
   // ── Pre-load SharedPreferences ────────────────────────────────────────
   final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-  // ── Initialise TTS ────────────────────────────────────────────────────
-  await _initializeServices();
-
   // ── Run app ───────────────────────────────────────────────────────────
   runApp(
     MultiProvider(
       providers: [
         Provider<TtsService>(
-          create: (_) => TtsService(),
+          create: (_) {
+            final TtsService tts = TtsService();
+            unawaited(
+              tts.init().catchError((Object error, StackTrace stack) {
+                debugPrint('TtsService init failed — running in silent mode: $error\n$stack');
+              }),
+            );
+            return tts;
+          },
           dispose: (_, svc) => svc.dispose(),
         ),
 
@@ -81,15 +86,6 @@ Future<void> main() async {
       child: const LumiSenseApp(),
     ),
   );
-}
-
-/// Initialises shared services before the widget tree starts.
-Future<void> _initializeServices() async {
-  try {
-    await TtsService().init();
-  } catch (e, stack) {
-    debugPrint('TtsService init failed — running in silent mode: $e\n$stack');
-  }
 }
 
 class LumiSenseApp extends StatelessWidget {

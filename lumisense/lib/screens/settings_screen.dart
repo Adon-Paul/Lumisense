@@ -141,6 +141,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
+          const SizedBox(height: 10),
+
+          Semantics(
+            label: 'Power read mode. Reads long text in smaller chunks.',
+            toggled: settings.powerReadMode,
+            child: SwitchListTile(
+              value: settings.powerReadMode,
+              activeThumbColor: AppTheme.primaryYellow,
+              title: const Text(
+                'Power Read Mode',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: const Text(
+                'Speaks long OCR text in small chunks for easier listening.',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+              onChanged: (bool value) async {
+                final TtsService tts = context.read<TtsService>();
+                await settings.setPowerReadMode(value);
+                if (!mounted) return;
+                HapticFeedback.mediumImpact();
+                await tts.speak(
+                  value ? 'Power read mode enabled.' : 'Power read mode disabled.',
+                );
+              },
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+
           const SizedBox(height: 28),
 
           // ── Emergency Contact ────────────────────────────────────────

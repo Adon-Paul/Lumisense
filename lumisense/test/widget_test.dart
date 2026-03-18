@@ -1,16 +1,31 @@
-// This is a basic Flutter widget test for LumiSense app.
-
+// Basic deterministic widget smoke test for LumiSense.
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:lumisense/main.dart';
+import 'package:lumisense/providers/history_provider.dart';
+import 'package:lumisense/screens/history_screen.dart';
 
 void main() {
-  testWidgets('LumiSense app smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const LumiSenseApp());
+  testWidgets('History screen empty-state smoke test',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    // Verify that our splash screen is displayed
-    expect(find.text('LumiSense'), findsOneWidget);
-    expect(find.text('Set Up My LumiSense'), findsOneWidget);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<HistoryProvider>(
+        create: (_) => HistoryProvider(prefs: prefs),
+        child: const MaterialApp(
+          home: HistoryScreen(),
+        ),
+      ),
+    );
+
+    expect(find.text('History'), findsOneWidget);
+    expect(
+      find.text('No history yet. Use Read or Identify in camera mode to save entries.'),
+      findsOneWidget,
+    );
   });
 }

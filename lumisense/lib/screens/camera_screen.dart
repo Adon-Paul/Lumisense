@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lumisense/models/detection_result.dart';
 import 'package:lumisense/models/history_entry.dart';
 import 'package:lumisense/models/ocr_result.dart';
 import 'package:lumisense/providers/app_state.dart';
@@ -12,18 +11,33 @@ import 'package:lumisense/providers/history_provider.dart';
 import 'package:lumisense/providers/settings_provider.dart';
 import 'package:lumisense/services/camera_service.dart';
 import 'package:lumisense/services/gemini_service.dart';
-import 'package:lumisense/services/object_detection_service.dart';
+import 'package:lumisense/services/navigation_mode_controller.dart';
 import 'package:lumisense/services/ocr_service.dart';
 import 'package:lumisense/services/sos_service.dart';
 import 'package:lumisense/services/stt_service.dart';
 import 'package:lumisense/services/tts_service.dart';
+import 'package:lumisense/services/yolo_service.dart';
 import 'package:lumisense/utils/image_utils.dart';
 import 'package:lumisense/utils/theme.dart';
+import 'package:lumisense/widgets/bounding_box_overlay.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
+/// Specifies an action to auto-trigger when the camera screen opens.
+///
+/// Used by the home screen quick-access buttons so blind users don't
+/// have to navigate to the camera and tap a second time.
+enum CameraInitialAction { none, read, identify, describe, navigate }
+
 class CameraScreen extends StatefulWidget {
-  const CameraScreen({super.key});
+  const CameraScreen({
+    super.key,
+    this.initialAction = CameraInitialAction.none,
+  });
+
+  /// If set, the camera screen will automatically trigger this action
+  /// once the camera is initialized and the first frame is ready.
+  final CameraInitialAction initialAction;
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -33,9 +47,12 @@ class _CameraScreenState extends State<CameraScreen>
     with WidgetsBindingObserver {
   final CameraService _cameraService = CameraService();
   final OcrService _ocrService = OcrService();
-  final ObjectDetectionService _objectDetectionService =
-      ObjectDetectionService();
+  final YoloService _yoloService = YoloService();
   final SttService _sttService = SttService();
+
+  late final NavigationModeController _navController;
+  GeminiService? _geminiService;
+  String? _geminiApiKey;
 
   late Future<void> _cameraInitialization;
   String? _cameraError;
@@ -43,15 +60,29 @@ class _CameraScreenState extends State<CameraScreen>
   String? _lastResultPreview;
   bool _cameraPermissionPermanentlyDenied = false;
   bool _isProcessing = false;
-  final bool _powerReadMode = true;
   bool _isListening = false;
+  bool _initialActionTriggered = false;
+  bool _pendingInitialNavigateRetry = false;
+  Future<void>? _lifecycleShutdownFuture;
+
+  // ─── Navigation mode state ─────────────────────────────────────────────────
+
+  bool _isNavigating = false;
+  bool _isYoloReady = false;
+  bool _isInferring = false;
+  List<YoloDetection> _yoloDetections = const [];
+  int _cameraImageWidth = 0;
+  int _cameraImageHeight = 0;
+  double _navFps = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _navController = NavigationModeController(tts: context.read<TtsService>());
     _cameraInitialization = _initializeCamera();
     _initStt();
+    _initYolo();
   }
 
   Future<void> _initStt() async {
@@ -60,6 +91,20 @@ class _CameraScreenState extends State<CameraScreen>
     _sttService.onListeningChanged = (bool listening) {
       if (mounted) setState(() => _isListening = listening);
     };
+  }
+
+  /// Pre-load the YOLO model in background so navigation mode starts instantly.
+  Future<void> _initYolo() async {
+    try {
+      await _yoloService.loadModel(useGpu: true, numThreads: 2);
+      if (mounted) {
+        setState(() => _isYoloReady = true);
+      }
+      _retryPendingInitialNavigate();
+    } catch (e) {
+      debugPrint('YOLO model load failed: $e');
+      // Navigation mode will be unavailable but all other features work.
+    }
   }
 
   void _handleVoiceCommand(VoiceCommand command, String rawText) {
@@ -72,6 +117,8 @@ class _CameraScreenState extends State<CameraScreen>
         _onIdentifyTap();
       case VoiceCommand.describeScene:
         _onDescribeTap();
+      case VoiceCommand.navigation:
+        _toggleNavigation();
       case VoiceCommand.help:
         context.read<TtsService>().speak(SttService.helpText);
       case VoiceCommand.sos:
@@ -96,6 +143,7 @@ class _CameraScreenState extends State<CameraScreen>
         _cameraError = null;
         _cameraPermissionPermanentlyDenied = false;
       });
+      _triggerInitialActionIfNeeded();
     } on CameraException catch (error) {
       if (!mounted) return;
       setState(() => _cameraError = _friendlyCameraError(error));
@@ -128,13 +176,12 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _openAppSettings() async {
     await openAppSettings();
-    // Don't immediately retry — wait for lifecycle resumed event.
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive) {
-      _cameraService.disposeController();
+      unawaited(_serializeLifecycleShutdown());
       return;
     }
 
@@ -146,12 +193,110 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_serializeLifecycleShutdown());
     unawaited(_ocrService.dispose());
-    unawaited(_objectDetectionService.dispose());
     unawaited(_sttService.dispose());
-    _cameraService.disposeController();
+    _navController.dispose();
+    // Don't dispose YoloService — it's a singleton shared across the app.
     super.dispose();
   }
+
+  // ─── Navigation Mode ──────────────────────────────────────────────────────
+
+  void _toggleNavigation() {
+    if (!_isYoloReady) {
+      context.read<TtsService>().speak(
+        'Navigation mode is not available. The YOLO model could not be loaded.',
+      );
+      return;
+    }
+
+    if (_isNavigating) {
+      unawaited(_stopNavigation(announce: true));
+    } else {
+      unawaited(_startNavigation());
+    }
+  }
+
+  Future<void> _startNavigation() async {
+    if (_isNavigating || !_isYoloReady) return;
+    if (!_cameraService.isInitialized) return;
+
+    final TtsService tts = context.read<TtsService>();
+    final AppStateProvider appState = context.read<AppStateProvider>();
+
+    setState(() {
+      _isNavigating = true;
+      _yoloDetections = const [];
+      _statusMessage = 'Navigation mode active';
+      _lastResultPreview = 'Scanning surroundings...';
+    });
+
+    appState.currentMode = AppMode.navigation;
+    HapticFeedback.mediumImpact();
+    await tts.speak('Navigation mode on.');
+
+    // Start camera image stream → feed YOLO.
+    await _cameraService.startImageStream(_onCameraFrame);
+  }
+
+  Future<void> _stopNavigation({bool announce = true}) async {
+    if (!_isNavigating) return;
+    final TtsService? tts = announce ? context.read<TtsService>() : null;
+
+    await _cameraService.stopImageStream();
+    _navController.reset();
+
+    if (mounted) {
+      setState(() {
+        _isNavigating = false;
+        _isInferring = false;
+        _yoloDetections = const [];
+        _navFps = 0;
+        _statusMessage = null;
+        _lastResultPreview = null;
+      });
+    }
+
+    if (announce && tts != null) {
+      HapticFeedback.mediumImpact();
+      await tts.speak('Navigation mode off.');
+    }
+  }
+
+  /// Called for every camera frame while navigation mode is active.
+  void _onCameraFrame(CameraImage image) {
+    // Skip frame if already processing one — natural throttle to max inference speed.
+    if (!_isNavigating || _isInferring) return;
+    _isInferring = true;
+
+    // Store camera image dimensions for bounding box scaling.
+    _cameraImageWidth = image.width;
+    _cameraImageHeight = image.height;
+
+    _yoloService
+        .detectOnFrame(image, confThreshold: 0.45, iouThreshold: 0.45)
+        .then((List<YoloDetection> detections) {
+      if (!mounted || !_isNavigating) {
+        _isInferring = false;
+        return;
+      }
+
+      // Update navigation controller (handles TTS announcements).
+      _navController.updateDetections(detections);
+
+      setState(() {
+        _yoloDetections = detections;
+        _navFps = _navController.fps;
+        _isInferring = false;
+      });
+    }).catchError((Object error) {
+      debugPrint('Navigation frame error: $error');
+      _isInferring = false;
+    });
+  }
+
+  // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -178,11 +323,29 @@ class _CameraScreenState extends State<CameraScreen>
                 child: Semantics(
                   label: 'Camera preview. Tap to describe the scene.',
                   child: GestureDetector(
-                    onTap: _onDescribeTap,
+                    onTap: _isNavigating ? null : _onDescribeTap,
                     child: CameraPreview(_cameraService.controller!),
                   ),
                 ),
               ),
+
+              // Bounding box overlay (navigation mode)
+              if (_isNavigating && _yoloDetections.isNotEmpty)
+                Positioned.fill(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return BoundingBoxOverlay(
+                        detections: _yoloDetections,
+                        previewSize: Size(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
+                        ),
+                        imageWidth: _cameraImageWidth,
+                        imageHeight: _cameraImageHeight,
+                      );
+                    },
+                  ),
+                ),
 
               // Top bar
               Positioned(
@@ -201,8 +364,15 @@ class _CameraScreenState extends State<CameraScreen>
                           onPressed: () => Navigator.of(context).pop(),
                         ),
                         const Spacer(),
+                        // Navigation mode indicator
+                        if (_isNavigating)
+                          NavigationModeIndicator(
+                            isActive: _isNavigating,
+                            detectionCount: _yoloDetections.length,
+                            fps: _navFps,
+                          ),
                         // Listening indicator
-                        if (_isListening)
+                        if (!_isNavigating && _isListening)
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 8),
@@ -223,7 +393,7 @@ class _CameraScreenState extends State<CameraScreen>
                               ],
                             ),
                           ),
-                        if (!_isListening)
+                        if (!_isNavigating && !_isListening)
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 8),
@@ -321,7 +491,7 @@ class _CameraScreenState extends State<CameraScreen>
               enabled: !_isProcessing,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: _buildActionButton(
               icon: Icons.search,
@@ -330,13 +500,22 @@ class _CameraScreenState extends State<CameraScreen>
               enabled: !_isProcessing,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildActionButton(
+              icon: _isNavigating ? Icons.navigation : Icons.navigation_outlined,
+              label: _isNavigating ? 'Stop Nav' : 'Navigate',
+              onPressed: _toggleNavigation,
+              highlighted: _isNavigating,
+              enabled: !_isProcessing && _isYoloReady,
+            ),
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: _buildActionButton(
               icon: Icons.auto_awesome,
               label: 'Describe',
               onPressed: _onDescribeTap,
-              highlighted: true,
               enabled: !_isProcessing,
             ),
           ),
@@ -365,7 +544,7 @@ class _CameraScreenState extends State<CameraScreen>
         child: ElevatedButton(
           onPressed: enabled
               ? () {
-                  HapticFeedback.heavyImpact();
+                  HapticFeedback.mediumImpact();
                   onPressed();
                 }
               : null,
@@ -373,6 +552,7 @@ class _CameraScreenState extends State<CameraScreen>
             elevation: 0,
             backgroundColor: background,
             foregroundColor: foreground,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -380,10 +560,11 @@ class _CameraScreenState extends State<CameraScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon, size: 26),
-              const SizedBox(height: 4),
+              Icon(icon, size: 24),
+              const SizedBox(height: 2),
               Text(label,
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11)),
             ],
           ),
         ),
@@ -522,11 +703,10 @@ class _CameraScreenState extends State<CameraScreen>
   // ─── Voice command toggle ────────────────────────────────────────────────
 
   Future<void> _toggleListening() async {
-    HapticFeedback.heavyImpact();
+    HapticFeedback.mediumImpact();
     if (_isListening) {
       await _sttService.stopListening();
     } else {
-      // Stop TTS before listening so the mic doesn't hear itself
       await context.read<TtsService>().stop();
       await _sttService.startListening();
     }
@@ -536,10 +716,15 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _onReadTap() async {
     if (_isProcessing) return;
+    HapticFeedback.selectionClick();
 
     final TtsService tts = context.read<TtsService>();
     final AppStateProvider appState = context.read<AppStateProvider>();
     final HistoryProvider history = context.read<HistoryProvider>();
+
+    // Pause navigation if active.
+    final bool wasNavigating = _isNavigating;
+    if (wasNavigating) await _cameraService.stopImageStream();
 
     setState(() {
       _isProcessing = true;
@@ -597,17 +782,26 @@ class _CameraScreenState extends State<CameraScreen>
       }
       appState.processingState = ProcessingState.idle;
       if (mounted) setState(() => _isProcessing = false);
+      // Resume navigation if it was active.
+      if (wasNavigating && mounted) {
+        await _cameraService.startImageStream(_onCameraFrame);
+      }
     }
   }
 
-  // ─── Object detection ────────────────────────────────────────────────────
+  // ─── Object detection (YOLO single-shot) ────────────────────────────────
 
   Future<void> _onIdentifyTap() async {
     if (_isProcessing) return;
+    HapticFeedback.selectionClick();
 
     final TtsService tts = context.read<TtsService>();
     final AppStateProvider appState = context.read<AppStateProvider>();
     final HistoryProvider history = context.read<HistoryProvider>();
+
+    // Pause navigation if active.
+    final bool wasNavigating = _isNavigating;
+    if (wasNavigating) await _cameraService.stopImageStream();
 
     setState(() {
       _isProcessing = true;
@@ -618,32 +812,56 @@ class _CameraScreenState extends State<CameraScreen>
     appState.currentMode = AppMode.identifyObjects;
     appState.processingState = ProcessingState.processing;
 
-    XFile? frame;
     try {
-      frame = await _cameraService.captureStillImage();
-      final DetectionResult result =
-          await _objectDetectionService.detectFromImagePath(frame.path);
+      // Use YOLO if available, otherwise report unavailable.
+      if (!_yoloService.isReady) {
+        if (!mounted) return;
+        setState(() => _statusMessage = 'Object detection model not loaded.');
+        await tts.speak('Object detection is not available. The model could not be loaded.');
+        return;
+      }
 
-      final List<DetectedObjectItem> filtered = result.items
-          .where((item) => item.confidence >= 0.60)
-          .take(3)
+      // Read the image bytes and use yoloOnImage (via a temp image detection).
+      // For single-shot, we use Gemini describe as a richer alternative when available,
+      // but YOLO gives instant offline results.
+      // Since yoloOnFrame needs CameraImage, we fall back to Gemini for still images.
+      // Actually — let's capture a frame from the stream briefly for YOLO single-shot.
+      final Completer<CameraImage> frameCompleter = Completer<CameraImage>();
+      bool capturedOneFrame = false;
+
+      await _cameraService.startImageStream((CameraImage image) {
+        if (!capturedOneFrame && !frameCompleter.isCompleted) {
+          capturedOneFrame = true;
+          frameCompleter.complete(image);
+        }
+      });
+
+      final CameraImage singleFrame =
+          await frameCompleter.future.timeout(const Duration(seconds: 2));
+      await _cameraService.stopImageStream();
+
+      final List<YoloDetection> detections = await _yoloService.detectOnFrame(
+        singleFrame,
+        confThreshold: 0.40,
+        iouThreshold: 0.45,
+      ).timeout(const Duration(seconds: 3));
+
+      final List<YoloDetection> filtered = detections
+          .where((d) => d.confidence >= 0.50)
+          .take(5)
           .toList(growable: false);
-
-      final List<DetectedObjectItem> spokenItems = filtered.isNotEmpty
-          ? filtered
-          : result.items.take(3).toList(growable: false);
 
       final String spokenText;
       final String previewText;
-      if (spokenItems.isEmpty) {
+      if (filtered.isEmpty) {
         spokenText =
             'No clear objects detected. Please point to a nearby object and try again.';
         previewText =
             'No clear objects detected. Try better lighting or move closer.';
       } else {
-        spokenText =
-            'I found ${spokenItems.map((e) => e.label).join(', ')}.';
-        previewText = spokenItems
+        final labels = filtered.map((e) => e.label).toSet().toList();
+        spokenText = 'I found ${labels.join(', ')}.';
+        previewText = filtered
             .map((e) =>
                 '${e.label} (${(e.confidence * 100).toStringAsFixed(0)}%)')
             .join(', ');
@@ -652,13 +870,13 @@ class _CameraScreenState extends State<CameraScreen>
       if (!mounted) return;
 
       setState(() {
-        _statusMessage = spokenItems.isEmpty
+        _statusMessage = filtered.isEmpty
             ? 'No objects detected'
-            : 'Objects identified in ${result.processingTimeMs} ms';
+            : 'Found ${filtered.length} objects';
         _lastResultPreview = previewText;
       });
 
-      if (spokenItems.isNotEmpty) {
+      if (filtered.isNotEmpty) {
         await history.addEntry(
           type: HistoryEntryType.objectDetection,
           title: 'Object Identification',
@@ -668,7 +886,14 @@ class _CameraScreenState extends State<CameraScreen>
 
       appState.processingState = ProcessingState.speaking;
       await tts.speak(spokenText);
+    } on TimeoutException {
+      await _cameraService.stopImageStream();
+      if (!mounted) return;
+      setState(() => _statusMessage = 'Detection timed out. Please try again.');
+      appState.processingState = ProcessingState.speaking;
+      await tts.speak('Object detection timed out. Please try again.');
     } catch (_) {
+      await _cameraService.stopImageStream();
       if (!mounted) return;
       setState(
           () => _statusMessage = 'Object identification failed. Please try again.');
@@ -676,12 +901,12 @@ class _CameraScreenState extends State<CameraScreen>
       await tts
           .speak('Unable to identify objects right now. Please try again.');
     } finally {
-      if (frame != null) {
-        final File capturedFile = File(frame.path);
-        if (await capturedFile.exists()) await capturedFile.delete();
-      }
       appState.processingState = ProcessingState.idle;
       if (mounted) setState(() => _isProcessing = false);
+      // Resume navigation if it was active.
+      if (wasNavigating && mounted) {
+        await _cameraService.startImageStream(_onCameraFrame);
+      }
     }
   }
 
@@ -689,13 +914,13 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _onDescribeTap() async {
     if (_isProcessing) return;
+    HapticFeedback.lightImpact();
 
     final TtsService tts = context.read<TtsService>();
     final AppStateProvider appState = context.read<AppStateProvider>();
     final HistoryProvider history = context.read<HistoryProvider>();
     final SettingsProvider settings = context.read<SettingsProvider>();
 
-    // Check API key availability
     if (!settings.hasApiKey) {
       HapticFeedback.heavyImpact();
       await tts.speak(
@@ -703,6 +928,10 @@ class _CameraScreenState extends State<CameraScreen>
       );
       return;
     }
+
+    // Pause navigation if active.
+    final bool wasNavigating = _isNavigating;
+    if (wasNavigating) await _cameraService.stopImageStream();
 
     setState(() {
       _isProcessing = true;
@@ -718,7 +947,7 @@ class _CameraScreenState extends State<CameraScreen>
       frame = await _cameraService.captureStillImage();
       final bytes = await ImageUtils.readJpegBytes(frame.path);
 
-      final GeminiService gemini = GeminiService(apiKey: settings.apiKey);
+      final GeminiService gemini = _getGeminiService(settings.apiKey);
       final String description = await gemini.describeScene(bytes);
 
       if (!mounted) return;
@@ -753,13 +982,17 @@ class _CameraScreenState extends State<CameraScreen>
       }
       appState.processingState = ProcessingState.idle;
       if (mounted) setState(() => _isProcessing = false);
+      // Resume navigation if it was active.
+      if (wasNavigating && mounted) {
+        await _cameraService.startImageStream(_onCameraFrame);
+      }
     }
   }
 
   // ─── SOS ─────────────────────────────────────────────────────────────────
 
   Future<void> _onSosTap() async {
-    HapticFeedback.heavyImpact();
+    HapticFeedback.vibrate();
     final TtsService tts = context.read<TtsService>();
     final SettingsProvider settings = context.read<SettingsProvider>();
 
@@ -820,5 +1053,80 @@ class _CameraScreenState extends State<CameraScreen>
     for (final String chunk in chunks.where((c) => c.isNotEmpty)) {
       await tts.speak(chunk);
     }
+  }
+
+  bool get _powerReadMode => context.read<SettingsProvider>().powerReadMode;
+
+  GeminiService _getGeminiService(String apiKey) {
+    if (_geminiService == null || _geminiApiKey != apiKey) {
+      _geminiService = GeminiService(apiKey: apiKey);
+      _geminiApiKey = apiKey;
+    }
+    return _geminiService!;
+  }
+
+  void _triggerInitialActionIfNeeded() {
+    if (_initialActionTriggered) return;
+    if (widget.initialAction == CameraInitialAction.none) return;
+    if (!_cameraService.isInitialized) return;
+
+    _initialActionTriggered = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isProcessing) return;
+      switch (widget.initialAction) {
+        case CameraInitialAction.read:
+          unawaited(_onReadTap());
+          break;
+        case CameraInitialAction.identify:
+          unawaited(_onIdentifyTap());
+          break;
+        case CameraInitialAction.describe:
+          unawaited(_onDescribeTap());
+          break;
+        case CameraInitialAction.navigate:
+          if (_isYoloReady) {
+            _toggleNavigation();
+          } else {
+            _pendingInitialNavigateRetry = true;
+          }
+          break;
+        case CameraInitialAction.none:
+          break;
+      }
+    });
+  }
+
+  void _retryPendingInitialNavigate() {
+    if (!_pendingInitialNavigateRetry) return;
+    if (!_isYoloReady || !_cameraService.isInitialized || _isProcessing) return;
+    if (!mounted || _isNavigating) return;
+
+    _pendingInitialNavigateRetry = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isProcessing || _isNavigating) return;
+      _toggleNavigation();
+    });
+  }
+
+  Future<void> _serializeLifecycleShutdown() {
+    final Future<void>? active = _lifecycleShutdownFuture;
+    if (active != null) return active;
+
+    final Future<void> shutdown = _performLifecycleShutdown();
+    _lifecycleShutdownFuture = shutdown;
+    return shutdown.whenComplete(() {
+      if (identical(_lifecycleShutdownFuture, shutdown)) {
+        _lifecycleShutdownFuture = null;
+      }
+    });
+  }
+
+  Future<void> _performLifecycleShutdown() async {
+    if (_isNavigating) {
+      await _stopNavigation(announce: false);
+    } else {
+      await _cameraService.stopImageStream();
+    }
+    await _cameraService.disposeController();
   }
 }

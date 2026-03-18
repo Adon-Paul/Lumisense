@@ -33,11 +33,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _openCameraLiveView() {
-    HapticFeedback.heavyImpact();
+  void _openCameraLiveView({CameraInitialAction action = CameraInitialAction.none}) {
+    HapticFeedback.mediumImpact();
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CameraScreen()),
+      MaterialPageRoute(
+        builder: (_) => CameraScreen(initialAction: action),
+      ),
     );
   }
 
@@ -120,7 +122,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             'Describe my surroundings. Opens camera for AI scene description.',
                         button: true,
                         child: GestureDetector(
-                          onTap: _openCameraLiveView,
+                          onTap: () => _openCameraLiveView(
+                            action: CameraInitialAction.describe,
+                          ),
                           child: Container(
                             width: 280,
                             height: 280,
@@ -170,12 +174,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           _buildQuickButton(
                             icon: Icons.text_fields,
                             label: 'Read Text',
-                            onTap: _openCameraLiveView,
+                            onTap: () => _openCameraLiveView(
+                              action: CameraInitialAction.read,
+                            ),
                           ),
                           _buildQuickButton(
                             icon: Icons.search,
                             label: 'Find Objects',
-                            onTap: _openCameraLiveView,
+                            onTap: () => _openCameraLiveView(
+                              action: CameraInitialAction.identify,
+                            ),
                           ),
                           _buildQuickButton(
                             icon: Icons.sos,

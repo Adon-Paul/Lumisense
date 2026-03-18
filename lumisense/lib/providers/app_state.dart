@@ -15,6 +15,7 @@ enum AppMode {
   readText,
   identifyObjects,
   describeScene,
+  navigation,
   sos,
   settings,
   history,

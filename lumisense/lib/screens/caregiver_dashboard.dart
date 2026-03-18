@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import 'package:lumisense/providers/settings_provider.dart';
 import 'package:lumisense/utils/theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class CaregiverDashboard extends StatefulWidget {
   const CaregiverDashboard({super.key});
@@ -9,8 +15,23 @@ class CaregiverDashboard extends StatefulWidget {
 }
 
 class _CaregiverDashboardState extends State<CaregiverDashboard> {
+  String _userName = 'User';
+
+  @override
+  void initState() {
+    super.initState();
+    final SharedPreferences prefs = context.read<SharedPreferences>();
+    final String? storedName = prefs.getString('userName');
+    if (storedName != null && storedName.trim().isNotEmpty) {
+      _userName = storedName.trim();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final SettingsProvider settings = context.watch<SettingsProvider>();
+    final String nextCheckIn = _formatNextCheckIn();
+
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
       appBar: AppBar(
@@ -38,6 +59,26 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryYellow.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppTheme.primaryYellow.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Text(
+                  'Caregiver mode is in prototype preview. Contact and identity are live; map and camera relay are demo visuals.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textPrimary,
+                      ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
               // Map view
               Container(
                 width: double.infinity,
@@ -139,7 +180,8 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
               // User Location
               _buildInfoCard(
                 title: 'User Location',
-                value: 'Kochi, Kerala',
+                value: 'Location shared only during SOS',
+                subtitle: 'Last known location is not persisted yet',
                 icon: Icons.location_on,
                 hasAction: true,
                 actionLabel: 'View Full Map',
@@ -158,19 +200,23 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
               // User Status
               _buildInfoCard(
                 title: 'User Status',
-                value: 'Arun',
-                subtitle: 'Online • 85%',
+                value: _userName,
+                subtitle: settings.hasEmergencyContact
+                    ? 'Emergency contact configured'
+                    : 'Emergency contact missing',
                 icon: Icons.person,
-                statusColor: AppTheme.online,
+                statusColor: settings.hasEmergencyContact
+                    ? AppTheme.online
+                    : AppTheme.warning,
               ),
               
               const SizedBox(height: 16),
               
               // Upcoming Medication
               _buildInfoCard(
-                title: 'Upcoming Medication',
-                value: '10:00 AM',
-                subtitle: '2 pills',
+                title: 'Next Check-in',
+                value: nextCheckIn,
+                subtitle: 'Suggested caregiver follow-up reminder',
                 icon: Icons.medication,
                 statusColor: AppTheme.warning,
               ),
@@ -199,7 +245,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                       backgroundColor: AppTheme.primaryYellow,
                       textColor: AppTheme.darkBackground,
                       onTap: () {
-                        _initiateCall();
+                        _initiateCall(settings);
                       },
                     ),
                   ),
@@ -217,7 +263,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                       backgroundColor: AppTheme.cardBackground,
                       textColor: AppTheme.textPrimary,
                       onTap: () {
-                        _sendMessage();
+                        _sendMessage(settings);
                       },
                     ),
                   ),
@@ -454,6 +500,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
   }
 
   void _showCameraFeed() {
+    HapticFeedback.mediumImpact();
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.cardBackground,
@@ -490,7 +537,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                       ),
                       SizedBox(height: 16),
                       Text(
-                        'Camera feed would appear here',
+                        'Live relay is planned for a future caregiver release',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: AppTheme.textSecondary,
                         ),
@@ -506,65 +553,91 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     );
   }
 
-  void _initiateCall() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Calling Arun...'),
-        backgroundColor: AppTheme.primaryYellow,
-      ),
-    );
+  Future<void> _initiateCall(SettingsProvider settings) async {
+    HapticFeedback.lightImpact();
+    if (!settings.hasEmergencyContact) {
+      _showNotice('Add emergency contact in Settings first.');
+      return;
+    }
+
+    final Uri telUri = Uri(scheme: 'tel', path: settings.emergencyContact);
+    if (await canLaunchUrl(telUri)) {
+      await launchUrl(telUri);
+      return;
+    }
+
+    _showNotice('Unable to open dialer on this device.');
   }
 
-  void _sendMessage() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.cardBackground,
-        title: Text(
-          'Send Message',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            color: AppTheme.textPrimary,
+  Future<void> _sendMessage(SettingsProvider settings) async {
+    HapticFeedback.lightImpact();
+    if (!settings.hasEmergencyContact) {
+      _showNotice('Add emergency contact in Settings first.');
+      return;
+    }
+
+    final TextEditingController messageController = TextEditingController();
+    try {
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppTheme.cardBackground,
+          title: Text(
+            'Send Message',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: AppTheme.textPrimary,
+            ),
           ),
+          content: TextField(
+            controller: messageController,
+            style: TextStyle(color: AppTheme.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Type your message...',
+              hintStyle: TextStyle(color: AppTheme.textHint),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final String text = messageController.text.trim();
+                Navigator.pop(context);
+                final Uri smsUri = Uri(
+                  scheme: 'sms',
+                  path: settings.emergencyContact,
+                  queryParameters:
+                      text.isEmpty ? null : <String, String>{'body': text},
+                );
+                if (await canLaunchUrl(smsUri)) {
+                  await launchUrl(smsUri);
+                } else {
+                  _showNotice('Unable to open SMS app on this device.');
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryYellow,
+              ),
+              child: Text(
+                'Send',
+                style: TextStyle(color: AppTheme.darkBackground),
+              ),
+            ),
+          ],
         ),
-        content: TextField(
-          style: TextStyle(color: AppTheme.textPrimary),
-          decoration: InputDecoration(
-            hintText: 'Type your message...',
-            hintStyle: TextStyle(color: AppTheme.textHint),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: AppTheme.textSecondary),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Message sent to Arun'),
-                  backgroundColor: AppTheme.primaryYellow,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryYellow,
-            ),
-            child: Text(
-              'Send',
-              style: TextStyle(color: AppTheme.darkBackground),
-            ),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      messageController.dispose();
+    }
   }
 
   void _showEmergencyDialog() {
+    HapticFeedback.vibrate();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -608,6 +681,25 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  String _formatNextCheckIn() {
+    final DateTime checkIn = DateTime.now().add(const Duration(hours: 1));
+    final int hour = checkIn.hour == 0
+        ? 12
+        : (checkIn.hour > 12 ? checkIn.hour - 12 : checkIn.hour);
+    final String minute = checkIn.minute.toString().padLeft(2, '0');
+    final String suffix = checkIn.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $suffix';
+  }
+
+  void _showNotice(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.primaryYellow,
       ),
     );
   }

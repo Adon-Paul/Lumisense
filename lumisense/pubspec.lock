@@ -29,18 +29,18 @@ packages:
     dependency: "direct main"
     description:
       name: camera
-      sha256: dfa8fc5a1adaeb95e7a54d86a5bd56f4bb0e035515354c8ac6d262e35cec2ec8
+      sha256: "4142a19a38e388d3bab444227636610ba88982e36dff4552d5191a86f65dc437"
       url: "https://pub.dev"
     source: hosted
-    version: "0.10.6"
-  camera_android:
+    version: "0.11.4"
+  camera_android_camerax:
     dependency: transitive
     description:
-      name: camera_android
-      sha256: cd49ccb409201a893bf625dca2df8746b88679f302826ab4d12748788a3a24b3
+      name: camera_android_camerax
+      sha256: "8516fe308bc341a5067fb1a48edff0ddfa57c0d3cdcc9dbe7ceca3ba119e2577"
       url: "https://pub.dev"
     source: hosted
-    version: "0.10.10+7"
+    version: "0.6.30"
   camera_avfoundation:
     dependency: transitive
     description:
@@ -227,6 +227,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.2.5"
+  flutter_vision:
+    dependency: "direct main"
+    description:
+      name: flutter_vision
+      sha256: "79b5481b89f7f7d8b6cf650aa32a92b516dac2c2a0e126ef4e58a18c2b3ef287"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -280,14 +288,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.5"
-  google_fonts:
-    dependency: "direct main"
-    description:
-      name: google_fonts
-      sha256: ebc94ed30fd13cefd397cb1658b593f21571f014b7d1197eeb41fb95f05d899a
-      url: "https://pub.dev"
-    source: hosted
-    version: "6.3.1"
   google_mlkit_commons:
     dependency: transitive
     description:
@@ -296,14 +296,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.11.1"
-  google_mlkit_object_detection:
-    dependency: "direct main"
-    description:
-      name: google_mlkit_object_detection
-      sha256: "9dd35886972e18747e22098f8ebee78d30716a99a789bb2e3a65a24229e031e7"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.15.1"
   google_mlkit_text_recognition:
     dependency: "direct main"
     description:
