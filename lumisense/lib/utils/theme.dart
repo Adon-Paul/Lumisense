@@ -27,10 +27,12 @@ class AppTheme {
         primary: primaryYellow,
         secondary: primaryYellow,
         surface: darkBackground,
+        surfaceContainerHighest: darkBackground,
         error: error,
         onPrimary: darkBackground,
         onSecondary: darkBackground,
         onSurface: textPrimary,
+        onSurfaceVariant: textPrimary,
         onError: textPrimary,
       ),
 
