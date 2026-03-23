@@ -1,109 +1,107 @@
 import 'package:flutter/material.dart';
-import 'package:lumisense/services/yolo_service.dart';
 import 'package:lumisense/utils/theme.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
-/// Renders YOLO bounding boxes on top of the camera preview.
+// ─── Color palette for bounding boxes ────────────────────────────────────────
+
+const List<Color> _boxColors = [
+  Color(0xFFFF3B30), // red
+  Color(0xFF34C759), // green
+  Color(0xFF007AFF), // blue
+  Color(0xFFFF9500), // orange
+  Color(0xFFAF52DE), // purple
+  Color(0xFFFFCC00), // yellow
+  Color(0xFF5AC8FA), // teal
+  Color(0xFFFF2D55), // pink
+  Color(0xFF30D158), // mint
+  Color(0xFF5856D6), // indigo
+];
+
+/// Renders bounding boxes over the camera preview using [normalizedBox]
+/// coordinates (0.0–1.0) from [YOLOResult].
 ///
-/// Coordinates from [YoloDetection] are in camera-image space and must be
-/// scaled to the preview widget size. On Android the camera sensor is
-/// landscape-oriented but the preview is portrait, so we swap width/height
-/// when computing scale factors.
+/// This is a Flutter-side overlay that works regardless of whether the
+/// native plugin renders its own overlays.
 class BoundingBoxOverlay extends StatelessWidget {
   const BoundingBoxOverlay({
     super.key,
     required this.detections,
     required this.previewSize,
-    required this.imageWidth,
-    required this.imageHeight,
   });
 
-  final List<YoloDetection> detections;
-
-  /// The size of the camera preview widget on screen.
+  final List<YOLOResult> detections;
   final Size previewSize;
-
-  /// The raw camera image width (from [CameraImage.width]).
-  final int imageWidth;
-
-  /// The raw camera image height (from [CameraImage.height]).
-  final int imageHeight;
-
-  // ─── Color palette for detected classes ──────────────────────────────────
-
-  static const List<Color> _palette = [
-    Color(0xFF4CAF50), // green
-    Color(0xFF2196F3), // blue
-    Color(0xFFFF9800), // orange
-    Color(0xFFE91E63), // pink
-    Color(0xFF9C27B0), // purple
-    Color(0xFF00BCD4), // cyan
-    Color(0xFF00BFFF), // electric blue
-    Color(0xFFFF5722), // deep orange
-    Color(0xFF3F51B5), // indigo
-    Color(0xFF8BC34A), // light green
-  ];
-
-  Color _colorForLabel(String label) {
-    return _palette[label.hashCode.abs() % _palette.length];
-  }
 
   @override
   Widget build(BuildContext context) {
-    if (detections.isEmpty) return const SizedBox.shrink();
-
-    // On Android the camera sensor is rotated 90 from the display.
-    // Camera image dimensions: width is the short side, height is the long side
-    // when held in portrait. flutter_vision returns boxes in camera-image space.
-    //
-    // Scale factors map camera coordinates → preview widget coordinates.
-    final double factorX = previewSize.width / (imageHeight > 0 ? imageHeight : 1);
-    final double factorY = previewSize.height / (imageWidth > 0 ? imageWidth : 1);
-
-    return Stack(
-      children: detections.map((YoloDetection det) {
-        final Color color = _colorForLabel(det.label);
-        final double left = det.x1 * factorX;
-        final double top = det.y1 * factorY;
-        final double width = (det.x2 - det.x1) * factorX;
-        final double height = (det.y2 - det.y1) * factorY;
-
-        return Positioned(
-          left: left.clamp(0, previewSize.width),
-          top: top.clamp(0, previewSize.height),
-          width: width.clamp(0, previewSize.width - left.clamp(0, previewSize.width)),
-          height: height.clamp(0, previewSize.height - top.clamp(0, previewSize.height)),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: color, width: 2.5),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.85),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(4),
-                    bottomRight: Radius.circular(6),
-                  ),
-                ),
-                child: Text(
-                  '${det.label} ${(det.confidence * 100).toStringAsFixed(0)}%',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    height: 1.2,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
+    return CustomPaint(
+      size: previewSize,
+      painter: _BoundingBoxPainter(detections: detections),
     );
   }
+}
+
+class _BoundingBoxPainter extends CustomPainter {
+  _BoundingBoxPainter({required this.detections});
+
+  final List<YOLOResult> detections;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final YOLOResult det in detections) {
+      final Color color = _boxColors[det.classIndex % _boxColors.length];
+      final Rect norm = det.normalizedBox;
+
+      // Map normalized coordinates (0–1) to pixel coordinates.
+      final Rect box = Rect.fromLTRB(
+        norm.left * size.width,
+        norm.top * size.height,
+        norm.right * size.width,
+        norm.bottom * size.height,
+      );
+
+      // Draw bounding box.
+      final Paint boxPaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5;
+      canvas.drawRect(box, boxPaint);
+
+      // Draw label background.
+      final String label =
+          '${det.className} ${(det.confidence * 100).toStringAsFixed(0)}%';
+      final TextPainter tp = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      final double labelW = tp.width + 8;
+      final double labelH = tp.height + 4;
+
+      // Position label above the box if space, else inside top.
+      final double labelY =
+          box.top > labelH + 2 ? box.top - labelH - 2 : box.top + 2;
+
+      final RRect labelBg = RRect.fromRectAndRadius(
+        Rect.fromLTWH(box.left, labelY, labelW, labelH),
+        const Radius.circular(4),
+      );
+      canvas.drawRRect(labelBg, Paint()..color = color);
+
+      tp.paint(canvas, Offset(box.left + 4, labelY + 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BoundingBoxPainter oldDelegate) =>
+      !identical(oldDelegate.detections, detections);
 }
 
 /// Indicator shown when navigation mode is active.

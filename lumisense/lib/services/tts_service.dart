@@ -28,7 +28,7 @@ class TtsService {
   bool _isInitialized = false;
   bool _isSpeaking = false;
 
-  double _speechRate = 0.5;
+  double _speechRate = 0.45;
   double _volume = 1.0;
   double _pitch = 1.0;
 
@@ -128,12 +128,26 @@ class TtsService {
     }
   }
 
+  /// Flag that callers can set to `true` to cancel a multi-chunk reading loop.
+  /// Reset to `false` at the start of each chunk-reading session.
+  bool chunkReadingCancelled = false;
+
   // ─── Speech control ─────────────────────────────────────────────────────────
+
+  /// Speaks [text] with highest priority — cancels any in-flight chunk reading
+  /// and interrupts the current utterance immediately.
+  ///
+  /// Use for SOS alerts and critical error messages.
+  Future<void> speakUrgent(String text) async {
+    chunkReadingCancelled = true;
+    await speak(text);
+  }
 
   /// Speaks [text]. Any ongoing speech is stopped first.
   ///
-  /// Returns silently if [text] is blank. Throws if the TTS engine rejects
-  /// the call (result != 1).
+  /// Returns as soon as the native engine has accepted the text — it does
+  /// **not** wait for speech to finish. Use [speakAndWait] when you need
+  /// sequential utterances (e.g., reading text in chunks).
   Future<void> speak(String text) async {
     final String trimmed = text.trim();
     if (trimmed.isEmpty) return;
@@ -150,6 +164,59 @@ class TtsService {
     if (result != 1) {
       debugPrint('TtsService: speak() returned $result for: "$trimmed"');
     }
+  }
+
+  /// Speaks [text] and waits for the utterance to finish before returning.
+  ///
+  /// Uses a [Completer] tied to the native completion/cancel/error callbacks.
+  /// This is safe to call in a sequential loop — each chunk fully plays
+  /// before the next one begins.
+  Future<void> speakAndWait(String text) async {
+    final String trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+
+    await init();
+
+    if (_isSpeaking) {
+      await _tts.stop();
+    }
+
+    final Completer<void> completer = Completer<void>();
+
+    // Temporarily install one-shot callbacks that complete the future.
+    final VoidCallback? prevComplete = onSpeakComplete;
+    final VoidCallback? prevCancel = onSpeakCancel;
+    final ValueChanged<String>? prevError = onSpeakError;
+
+    void finish() {
+      // Restore previous callbacks.
+      onSpeakComplete = prevComplete;
+      onSpeakCancel = prevCancel;
+      onSpeakError = prevError;
+      if (!completer.isCompleted) completer.complete();
+    }
+
+    onSpeakComplete = () {
+      prevComplete?.call();
+      finish();
+    };
+    onSpeakCancel = () {
+      prevCancel?.call();
+      finish();
+    };
+    onSpeakError = (String msg) {
+      prevError?.call(msg);
+      finish();
+    };
+
+    final Object? result = await _tts.speak(trimmed);
+    if (result != 1) {
+      debugPrint('TtsService: speakAndWait() returned $result for: "$trimmed"');
+      finish(); // Don't hang if the engine rejected the text.
+      return;
+    }
+
+    return completer.future;
   }
 
   /// Stops any ongoing speech immediately.

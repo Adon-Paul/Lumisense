@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LumiSense dark background — #121212 prevents halation for low-vision users -->
+    <color name="launch_bg">#FF121212</color>
+    <!-- Brand accent (electric blue) -->
+    <color name="accent_blue">#FF00BFFF</color>
+	<color name="ic_launcher_background">#121212</color>
+</resources>

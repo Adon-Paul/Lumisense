@@ -10,6 +10,15 @@ enum VoiceCommand {
   identifyObjects,
   describeScene,
   navigation,
+  navigateTo,
+  repeatDirection,
+  whereAmI,
+  scanPayment,
+  identifyCurrency,
+  checkBrightness,
+  checkWeather,
+  callContact,
+  detectPeople,
   help,
   sos,
   stop,
@@ -54,6 +63,9 @@ class SttService {
 
   /// Initialises the speech recogniser. Returns `true` if the engine and
   /// microphone permission are available.
+  /// Initialises the speech recogniser. Returns `true` if the engine and
+  /// microphone permission are available. Safe to call multiple times —
+  /// retries on failure (does not cache a failed init).
   Future<bool> init() async {
     if (_isInitialized) return _speech.isAvailable;
 
@@ -63,7 +75,10 @@ class SttService {
         onError: _onError,
         debugLogging: kDebugMode,
       );
-      _isInitialized = true;
+      // Only mark as initialised on success so callers can retry.
+      if (available) {
+        _isInitialized = true;
+      }
       return available;
     } catch (e) {
       debugPrint('SttService init failed: $e');
@@ -148,7 +163,94 @@ class SttService {
       return VoiceCommand.identifyObjects;
     }
 
-    // Navigation mode toggle
+    // Turn-by-turn navigation: "navigate to [destination]" or "take me to [destination]"
+    if (lower.startsWith('navigate to') ||
+        lower.startsWith('take me to') ||
+        lower.startsWith('directions to') ||
+        lower.startsWith('walk to') ||
+        lower.startsWith('go to') ||
+        lower.startsWith('route to')) {
+      return VoiceCommand.navigateTo;
+    }
+
+    // Repeat current direction
+    if (lower.contains('repeat') ||
+        lower.contains('say again') ||
+        lower.contains('what was that') ||
+        lower.contains('current step')) {
+      return VoiceCommand.repeatDirection;
+    }
+
+    // Where am I / status
+    if (lower.contains('where am i') ||
+        lower.contains('how far') ||
+        lower.contains('status') ||
+        lower.contains('remaining') ||
+        lower.contains('eta')) {
+      return VoiceCommand.whereAmI;
+    }
+
+    // Currency identification
+    if (lower.contains('currency') ||
+        lower.contains('money') ||
+        lower.contains('note') ||
+        lower.contains('rupee') ||
+        lower.contains('cash') ||
+        lower.contains('denomination') ||
+        lower.contains('bill')) {
+      return VoiceCommand.identifyCurrency;
+    }
+
+    // Brightness / light detection
+    if (lower.contains('brightness') ||
+        lower.contains('light') ||
+        lower.contains('dark') ||
+        lower.contains('lights on') ||
+        lower.contains('lights off') ||
+        lower.contains('how bright')) {
+      return VoiceCommand.checkBrightness;
+    }
+
+    // Weather check
+    if (lower.contains('weather') ||
+        lower.contains('temperature') ||
+        lower.contains('rain') ||
+        lower.contains('forecast') ||
+        lower.contains('hot') ||
+        lower.contains('cold outside')) {
+      return VoiceCommand.checkWeather;
+    }
+
+    // Call contact — "call mom", "phone dad", "dial john"
+    if (lower.startsWith('call ') ||
+        lower.startsWith('phone ') ||
+        lower.startsWith('dial ') ||
+        lower.startsWith('ring ')) {
+      return VoiceCommand.callContact;
+    }
+
+    // People detection — "who is there", "faces", "people", "anyone there"
+    if (lower.contains('who is there') ||
+        lower.contains('who\'s there') ||
+        lower.contains('anyone there') ||
+        lower.contains('people') ||
+        lower.contains('faces') ||
+        lower.contains('person') ||
+        lower.contains('someone')) {
+      return VoiceCommand.detectPeople;
+    }
+
+    // UPI Payment / QR scan
+    if (lower.contains('pay') ||
+        lower.contains('payment') ||
+        lower.contains('scan qr') ||
+        lower.contains('scan code') ||
+        lower.contains('qr code') ||
+        lower.contains('upi')) {
+      return VoiceCommand.scanPayment;
+    }
+
+    // Navigation mode toggle (obstacle detection only)
     if (lower.contains('navigate') ||
         lower.contains('navigation') ||
         lower.contains('guide me') ||
@@ -189,12 +291,56 @@ class SttService {
   }
 
   /// Returns a help string listing available voice commands.
+  /// Extracts the destination from a "navigate to X" voice command.
+  static String extractDestination(String rawText) {
+    final String lower = rawText.toLowerCase().trim();
+    for (final String prefix in <String>[
+      'navigate to',
+      'take me to',
+      'directions to',
+      'walk to',
+      'go to',
+      'route to',
+    ]) {
+      if (lower.startsWith(prefix)) {
+        return rawText.substring(prefix.length).trim();
+      }
+    }
+    return rawText;
+  }
+
+  /// Extracts the contact name from a "call [name]" voice command.
+  static String extractContactName(String rawText) {
+    final String lower = rawText.toLowerCase().trim();
+    for (final String prefix in <String>[
+      'call ',
+      'phone ',
+      'dial ',
+      'ring ',
+    ]) {
+      if (lower.startsWith(prefix)) {
+        return rawText.substring(prefix.length).trim();
+      }
+    }
+    return rawText;
+  }
+
+  /// Returns a help string listing available voice commands.
   static String get helpText =>
       'Available commands: '
       'Say "Read" to read text. '
-      'Say "What\'s in front of me" or "Identify" to find objects. '
-      'Say "Navigate" to toggle navigation mode. '
-      'Say "Describe" or "Tell me about this" for a scene description. '
+      'Say "Identify" to find objects. '
+      'Say "Navigate" to toggle obstacle detection. '
+      'Say "Navigate to" followed by a place name for walking directions. '
+      'Say "Repeat" to hear the current direction again. '
+      'Say "Where am I" for navigation status. '
+      'Say "Describe" for a scene description. '
+      'Say "Pay" or "Scan QR" to scan a UPI payment code. '
+      'Say "Money" or "Currency" to identify a banknote. '
+      'Say "Light" or "Brightness" to check lighting conditions. '
+      'Say "Weather" to hear the current weather. '
+      'Say "Call" followed by a name to call a contact. '
+      'Say "People" or "Who is there" to detect faces. '
       'Say "Help" for this list. '
       'Say "Emergency" for SOS. '
       'Say "Stop" to cancel.';

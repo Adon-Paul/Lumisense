@@ -59,12 +59,11 @@ dependencies:
   # Haptic Feedback (temporarily disabled for build compatibility)
   # vibration: ^1.8.4
   
-  # Camera and Image Processing
-  camera: ^0.11.2
+  # Image Processing
   image: ^4.8.0
 
-  # Real-time YOLO object detection
-  flutter_vision: ^2.0.0
+  # Real-time YOLO object detection (ultralytics — uses CameraX natively)
+  ultralytics_yolo: ^0.2.0
   
   # HTTP and Networking
   http: ^1.6.0
@@ -75,6 +74,14 @@ dependencies:
   
   # Utils
   intl: ^0.19.0
+  open_route_service: ^1.2.7
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
+  google_mlkit_barcode_scanning: ^0.14.2
+  flutter_contacts: ^2.0.1
+  weather: ^3.2.1
+  google_mlkit_face_detection: ^0.13.2
+  google_mlkit_pose_detection: ^0.14.1
 
 dev_dependencies:
   flutter_test:
@@ -87,6 +94,12 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
 
+  # App icon generation — run: dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.3
+
+  # Native splash screen — run: dart run flutter_native_splash:create
+  flutter_native_splash: ^2.4.6
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -98,9 +111,9 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  assets:
-    - assets/labels.txt
-    - assets/models/
+  # YOLO model lives in android/app/src/main/assets/ (native Android assets).
+  # No Flutter-level model assets needed.
+  # assets:
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -127,3 +140,26 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# ─── App Icon Configuration ──────────────────────────────────────────────────
+# Run: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#121212"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+
+# ─── Native Splash Screen ────────────────────────────────────────────────────
+# Run: dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#121212"
+  image: "assets/icon/icon_foreground.png"
+  image_dark: "assets/icon/icon_foreground.png"
+  color_dark: "#121212"
+  android: true
+  ios: false
+  android_12:
+    color: "#121212"
+    icon_background_color: "#121212"
+    image: "assets/icon/icon_foreground.png"

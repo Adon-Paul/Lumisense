@@ -19,7 +19,6 @@ enum AppMode {
   sos,
   settings,
   history,
-  medication,
 }
 
 /// Global UI/session state for LumiSense.

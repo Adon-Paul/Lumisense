@@ -102,7 +102,7 @@ class _HistoryCard extends StatelessWidget {
                     HistoryEntryType.objectDetection => Icons.search,
                     HistoryEntryType.sceneDescription => Icons.auto_awesome,
                   },
-                  color: AppTheme.primaryYellow,
+                  color: AppTheme.accentBlue,
                   size: 18,
                 ),
                 const SizedBox(width: 8),

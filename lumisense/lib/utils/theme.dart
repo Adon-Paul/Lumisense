@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 class AppTheme {
   // LumiSense Brand Colors
-  // Electric blue accent replaces the previous yellow accent.
-  static const Color primaryYellow = Color(0xFF00BFFF);
-  static const Color darkBackground = Color(0xFF000000);
+  // Electric blue accent — the primary brand color.
+  static const Color accentBlue = Color(0xFF00BFFF);
+  static const Color darkBackground = Color(0xFF121212);
   static const Color cardBackground = Color(0xFF1A1A1A);
   static const Color textPrimary = Color(0xFFFFFFFF);
   static const Color textSecondary = Color(0xFFB3B3B3);
@@ -24,8 +24,8 @@ class AppTheme {
 
       // Color Scheme
       colorScheme: const ColorScheme.dark(
-        primary: primaryYellow,
-        secondary: primaryYellow,
+        primary: accentBlue,
+        secondary: accentBlue,
         surface: darkBackground,
         surfaceContainerHighest: darkBackground,
         error: error,
@@ -134,7 +134,7 @@ class AppTheme {
       // Button Themes
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: primaryYellow,
+          backgroundColor: accentBlue,
           foregroundColor: darkBackground,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
@@ -177,7 +177,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: primaryYellow, width: 2),
+          borderSide: const BorderSide(color: accentBlue, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -211,7 +211,7 @@ class AppTheme {
       // Bottom Navigation Bar
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: cardBackground,
-        selectedItemColor: primaryYellow,
+        selectedItemColor: accentBlue,
         unselectedItemColor: textSecondary,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
@@ -231,8 +231,8 @@ class AppStyles {
     ),
   );
 
-  static BoxDecoration get yellowCardDecoration => BoxDecoration(
-    color: AppTheme.primaryYellow,
+  static BoxDecoration get accentCardDecoration => BoxDecoration(
+    color: AppTheme.accentBlue,
     borderRadius: BorderRadius.circular(16),
   );
 

@@ -72,7 +72,7 @@ class _SplashScreenState extends State<SplashScreen> {
                         width: 80,
                         height: 80,
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryYellow,
+                          color: AppTheme.accentBlue,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Icon(
@@ -126,7 +126,7 @@ class _SplashScreenState extends State<SplashScreen> {
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryYellow,
+                          backgroundColor: AppTheme.accentBlue,
                           foregroundColor: AppTheme.darkBackground,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),

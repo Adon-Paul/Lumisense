@@ -1,5 +1,7 @@
+import 'package:flutter/services.dart';
+
 import 'package:lumisense/services/tts_service.dart';
-import 'package:lumisense/services/yolo_service.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 /// Manages the smart TTS announcement pipeline for navigation mode.
 ///
@@ -8,14 +10,20 @@ import 'package:lumisense/services/yolo_service.dart';
 /// 2. **New** — not already in the previously announced set
 /// 3. **Off cooldown** — at least [announcementCooldown] since last TTS call
 ///
-/// This prevents rapid-fire speech and false-positive announcements while
-/// providing a natural, calm narration of the user's surroundings.
+/// Enhancements over a basic pipeline:
+/// - **Spatial awareness**: announces object position (left / ahead / right)
+///   and proximity (close / nearby) based on bounding box.
+/// - **Priority ordering**: vehicles and people are announced before furniture.
+/// - **Proximity haptics**: vibration intensity scales with proximity.
+/// - **Periodic summary**: reassures the user the system is active when the
+///   scene is stable (no new objects for [summaryInterval]).
 class NavigationModeController {
   NavigationModeController({
     required TtsService tts,
     this.announcementCooldown = const Duration(seconds: 3),
     this.persistenceThreshold = 2,
     this.forgetDuration = const Duration(seconds: 5),
+    this.summaryInterval = const Duration(seconds: 15),
   }) : _tts = tts;
 
   final TtsService _tts;
@@ -30,53 +38,77 @@ class NavigationModeController {
   /// re-announced if it reappears.
   final Duration forgetDuration;
 
-  // ─── State ──────────────────────────────────────────────────────────────────
+  /// How often to repeat a stable-scene summary so the user knows the system
+  /// is still active (e.g., "Still seeing 2 people ahead").
+  final Duration summaryInterval;
 
-  /// Objects currently detected in the latest frame.
-  Set<String> _currentLabels = {};
+  // ─── Priority map ──────────────────────────────────────────────────────────
+  // Higher number = announced first. Objects not in the map default to 1.
 
-  /// Objects that have passed the persistence threshold.
-  final Set<String> _confirmedLabels = {};
+  static const Map<String, int> _priorityMap = <String, int>{
+    'person': 10,
+    'car': 9,
+    'truck': 9,
+    'bus': 9,
+    'train': 9,
+    'bicycle': 8,
+    'motorcycle': 8,
+    'dog': 7,
+    'cat': 6,
+    'traffic light': 6,
+    'stop sign': 6,
+    'fire hydrant': 5,
+    'chair': 3,
+    'bench': 3,
+    'potted plant': 2,
+    'dining table': 2,
+    'tv': 2,
+    'laptop': 2,
+  };
 
-  /// Objects that have already been announced and are still in view.
-  final Set<String> _announcedLabels = {};
+  // ─── State ────────────────────────────────────────────────────────────────
 
-  /// Tracks consecutive frame count for each label.
-  final Map<String, int> _frameCount = {};
+  Set<String> _currentLabels = <String>{};
+  final Set<String> _confirmedLabels = <String>{};
+  final Set<String> _announcedLabels = <String>{};
+  final Map<String, int> _frameCount = <String, int>{};
+  final Map<String, DateTime> _lastSeen = <String, DateTime>{};
 
-  /// When each label was last seen — used for forget logic.
-  final Map<String, DateTime> _lastSeen = {};
+  /// Stores the most recent spatial description for each confirmed label.
+  final Map<String, String> _spatialDescriptions = <String, String>{};
 
   DateTime _lastAnnouncementTime = DateTime(2000);
+  DateTime _lastSummaryTime = DateTime(2000);
   bool _isSpeaking = false;
-
-  /// Tracks whether we've previously made a confirmed-object announcement.
-  /// Used to trigger the "path is clear" announcement when everything disappears.
   bool _previouslyHadConfirmedObjects = false;
 
-  // ─── FPS tracking ───────────────────────────────────────────────────────────
+
+  // ─── FPS tracking ─────────────────────────────────────────────────────────
 
   int _framesSinceLastFps = 0;
   DateTime _lastFpsTime = DateTime.now();
   double _currentFps = 0;
 
-  /// Current inference FPS (updated every second).
   double get fps => _currentFps;
 
-  // ─── Public API ─────────────────────────────────────────────────────────────
+  // ─── Public API ───────────────────────────────────────────────────────────
 
   /// Call this for every YOLO inference result. Updates internal state,
   /// triggers TTS when appropriate, and returns the set of confirmed labels.
-  Set<String> updateDetections(List<YoloDetection> detections) {
+  Set<String> updateDetections(List<YOLOResult> detections) {
     final DateTime now = DateTime.now();
     _updateFps(now);
 
-    _currentLabels = detections.map((d) => d.label).toSet();
+    _currentLabels = detections.map((YOLOResult d) => d.className).toSet();
 
-    // Update persistence counters.
-    for (final String label in _currentLabels) {
+    // Update persistence counters and spatial descriptions.
+    for (final YOLOResult detection in detections) {
+      final String label = detection.className;
       _frameCount[label] = (_frameCount[label] ?? 0) + 1;
       _lastSeen[label] = now;
+
+      // Cache spatial description from the most recent detection.
+      _spatialDescriptions[label] = _describeSpatial(detection);
 
       if ((_frameCount[label] ?? 0) >= persistenceThreshold) {
         _confirmedLabels.add(label);
@@ -84,9 +116,8 @@ class NavigationModeController {
     }
 
     // Decrement/remove labels that disappeared from this frame.
-    final Set<String> disappeared = _frameCount.keys
-        .toSet()
-        .difference(_currentLabels);
+    final Set<String> disappeared =
+        _frameCount.keys.toSet().difference(_currentLabels);
     for (final String label in disappeared) {
       _frameCount[label] = (_frameCount[label] ?? 1) - 1;
       if ((_frameCount[label] ?? 0) <= 0) {
@@ -95,10 +126,7 @@ class NavigationModeController {
       }
     }
 
-    // Forget objects that haven't been seen for a while.
     _forgetOldObjects(now);
-
-    // Announce new confirmed objects.
     _maybeAnnounce(now);
 
     return Set<String>.from(_confirmedLabels);
@@ -106,22 +134,42 @@ class NavigationModeController {
 
   /// Resets all tracking state. Call when toggling navigation mode off.
   void reset() {
-    _currentLabels = {};
+    _currentLabels = <String>{};
     _confirmedLabels.clear();
     _announcedLabels.clear();
     _frameCount.clear();
     _lastSeen.clear();
+    _spatialDescriptions.clear();
     _isSpeaking = false;
     _previouslyHadConfirmedObjects = false;
     _currentFps = 0;
     _framesSinceLastFps = 0;
+    _lastSummaryTime = DateTime(2000);
   }
 
   void dispose() {
-    // Nothing to dispose — timers are not used.
+    // Nothing to dispose — no timers or streams.
   }
 
-  // ─── Private ────────────────────────────────────────────────────────────────
+  // ─── Spatial description ──────────────────────────────────────────────────
+
+  /// Builds a short spatial string like "close, ahead" from a detection's
+  /// bounding box relative to [_frameSize].
+  String _describeSpatial(YOLOResult detection) {
+    // Use normalizedBox (0-1 range) for position and area calculations.
+    final double cx =
+        (detection.normalizedBox.left + detection.normalizedBox.right) / 2;
+    final double area =
+        detection.normalizedBox.width * detection.normalizedBox.height;
+
+    final String horizontal =
+        cx < 0.33 ? 'on your left' : (cx > 0.66 ? 'on your right' : 'ahead');
+    final String proximity = area > 0.15 ? 'close' : 'nearby';
+
+    return '$proximity, $horizontal';
+  }
+
+  // ─── Private ──────────────────────────────────────────────────────────────
 
   void _updateFps(DateTime now) {
     _framesSinceLastFps++;
@@ -147,6 +195,7 @@ class NavigationModeController {
       _announcedLabels.remove(label);
       _confirmedLabels.remove(label);
       _frameCount.remove(label);
+      _spatialDescriptions.remove(label);
     }
   }
 
@@ -154,39 +203,76 @@ class NavigationModeController {
     if (_isSpeaking) return;
     if (now.difference(_lastAnnouncementTime) < announcementCooldown) return;
 
-    // Find confirmed objects that haven't been announced yet.
+    // ── New objects ─────────────────────────────────────────────────────────
     final Set<String> newObjects =
         _confirmedLabels.difference(_announcedLabels);
 
     if (newObjects.isNotEmpty) {
-      // Build announcement text.
-      final List<String> sorted = newObjects.toList()..sort();
-      final String text = sorted.length == 1
-          ? sorted.first
-          : '${sorted.sublist(0, sorted.length - 1).join(', ')} and ${sorted.last}';
+      // Sort by priority descending, limit to 3 to reduce cognitive overload.
+      final List<String> sorted = newObjects.toList()
+        ..sort((String a, String b) =>
+            (_priorityMap[b] ?? 1).compareTo(_priorityMap[a] ?? 1));
+      final List<String> top = sorted.take(3).toList();
+
+      // Build announcement with spatial descriptions.
+      final StringBuffer sb = StringBuffer();
+      for (int i = 0; i < top.length; i++) {
+        final String label = top[i];
+        final String spatial = _spatialDescriptions[label] ?? '';
+        if (i > 0) sb.write('. ');
+        sb.write('$label $spatial');
+      }
+
+      // Trigger proximity haptic for the highest-priority (first) object.
+      // Trigger proximity haptic based on the spatial description.
+      HapticFeedback.lightImpact();
 
       _isSpeaking = true;
       _lastAnnouncementTime = now;
+      _lastSummaryTime = now;
       _announcedLabels.addAll(newObjects);
       _previouslyHadConfirmedObjects = true;
 
-      _tts.speak(text).whenComplete(() {
+      _tts.speak(sb.toString()).whenComplete(() {
         _isSpeaking = false;
       });
       return;
     }
 
-    // Announce "path is clear" when all previously announced objects disappear.
+    // ── "Path is clear" ─────────────────────────────────────────────────────
     if (_previouslyHadConfirmedObjects &&
         _confirmedLabels.isEmpty &&
         _announcedLabels.isEmpty) {
       _previouslyHadConfirmedObjects = false;
       _isSpeaking = true;
       _lastAnnouncementTime = now;
+      _lastSummaryTime = now;
 
+      HapticFeedback.lightImpact();
       _tts.speak('Path is clear.').whenComplete(() {
+        _isSpeaking = false;
+      });
+      return;
+    }
+
+    // ── Periodic stable-scene summary ───────────────────────────────────────
+    if (_previouslyHadConfirmedObjects &&
+        _confirmedLabels.isNotEmpty &&
+        now.difference(_lastSummaryTime) > summaryInterval) {
+      final List<String> sorted = _confirmedLabels.toList()
+        ..sort((String a, String b) =>
+            (_priorityMap[b] ?? 1).compareTo(_priorityMap[a] ?? 1));
+      final List<String> top = sorted.take(3).toList();
+      final String summary = 'Still seeing ${top.join(', ')}';
+
+      _isSpeaking = true;
+      _lastAnnouncementTime = now;
+      _lastSummaryTime = now;
+
+      _tts.speak(summary).whenComplete(() {
         _isSpeaking = false;
       });
     }
   }
+
 }

@@ -18,7 +18,16 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _emergencyContactController;
   late TextEditingController _apiKeyController;
+  late TextEditingController _openRouterApiKeyController;
+  late TextEditingController _groqApiKeyController;
+  late TextEditingController _ollamaServerUrlController;
+  late TextEditingController _orsApiKeyController;
+  late TextEditingController _weatherApiKeyController;
   bool _apiKeyObscured = true;
+  bool _openRouterApiKeyObscured = true;
+  bool _groqApiKeyObscured = true;
+  bool _orsApiKeyObscured = true;
+  bool _weatherApiKeyObscured = true;
 
   @override
   void initState() {
@@ -27,6 +36,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _emergencyContactController =
         TextEditingController(text: settings.emergencyContact);
     _apiKeyController = TextEditingController(text: settings.apiKey);
+    _openRouterApiKeyController =
+        TextEditingController(text: settings.openRouterApiKey);
+    _groqApiKeyController = TextEditingController(text: settings.groqApiKey);
+    _ollamaServerUrlController =
+        TextEditingController(text: settings.ollamaServerUrl);
+    _orsApiKeyController = TextEditingController(text: settings.orsApiKey);
+    _weatherApiKeyController =
+        TextEditingController(text: settings.weatherApiKey);
 
     // Announce screen to TTS for accessibility
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -40,6 +57,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _emergencyContactController.dispose();
     _apiKeyController.dispose();
+    _openRouterApiKeyController.dispose();
+    _groqApiKeyController.dispose();
+    _ollamaServerUrlController.dispose();
+    _orsApiKeyController.dispose();
+    _weatherApiKeyController.dispose();
     super.dispose();
   }
 
@@ -148,7 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             toggled: settings.powerReadMode,
             child: SwitchListTile(
               value: settings.powerReadMode,
-              activeThumbColor: AppTheme.primaryYellow,
+              activeThumbColor: AppTheme.accentBlue,
               title: const Text(
                 'Power Read Mode',
                 style: TextStyle(
@@ -189,9 +211,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 hintText: '+91 XXXXX XXXXX',
                 filled: true,
                 fillColor: AppTheme.cardBackground,
-                prefixIcon: const Icon(Icons.phone, color: AppTheme.primaryYellow),
+                prefixIcon: const Icon(Icons.phone, color: AppTheme.accentBlue),
                 suffixIcon: IconButton(
-                  icon: const Icon(Icons.save, color: AppTheme.primaryYellow),
+                  icon: const Icon(Icons.save, color: AppTheme.accentBlue),
                   tooltip: 'Save emergency contact',
                   onPressed: () => _saveEmergencyContact(settings),
                 ),
@@ -225,7 +247,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 filled: true,
                 fillColor: AppTheme.cardBackground,
                 prefixIcon:
-                    const Icon(Icons.key, color: AppTheme.primaryYellow),
+                    const Icon(Icons.key, color: AppTheme.accentBlue),
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
@@ -242,7 +264,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                     ),
                     IconButton(
-                      icon: const Icon(Icons.save, color: AppTheme.primaryYellow),
+                      icon: const Icon(Icons.save, color: AppTheme.accentBlue),
                       tooltip: 'Save API key',
                       onPressed: () => _saveApiKey(settings),
                     ),
@@ -259,6 +281,270 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : 'Required for "Describe" feature. Get a key at ai.google.dev.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: settings.hasApiKey
+                      ? AppTheme.success
+                      : AppTheme.textSecondary,
+                ),
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── OpenRouter API Key (Gemini fallback) ──────────────────
+          _buildSectionHeader('OpenRouter AI Key (Gemini Fallback)'),
+          const SizedBox(height: 12),
+          Semantics(
+            label: 'OpenRouter A I API key, used as fallback when Gemini is unavailable',
+            textField: true,
+            child: TextField(
+              controller: _openRouterApiKeyController,
+              obscureText: _openRouterApiKeyObscured,
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
+              decoration: InputDecoration(
+                hintText: 'Paste your OpenRouter API key',
+                filled: true,
+                fillColor: AppTheme.cardBackground,
+                prefixIcon:
+                    const Icon(Icons.swap_horiz, color: AppTheme.accentBlue),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    IconButton(
+                      icon: Icon(
+                        _openRouterApiKeyObscured
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        color: AppTheme.textSecondary,
+                      ),
+                      tooltip: _openRouterApiKeyObscured ? 'Show key' : 'Hide key',
+                      onPressed: () {
+                        setState(() =>
+                            _openRouterApiKeyObscured = !_openRouterApiKeyObscured);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.save, color: AppTheme.accentBlue),
+                      tooltip: 'Save OpenRouter key',
+                      onPressed: () => _saveOpenRouterApiKey(settings),
+                    ),
+                  ],
+                ),
+              ),
+              onSubmitted: (_) => _saveOpenRouterApiKey(settings),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            settings.hasOpenRouterApiKey
+                ? '✓ OpenRouter key saved. Auto-fallback enabled when Gemini fails.'
+                : 'Free fallback AI. Get a free key at openrouter.ai. Supports Gemini, Llama vision.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: settings.hasOpenRouterApiKey
+                      ? AppTheme.success
+                      : AppTheme.textSecondary,
+                ),
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── Groq API Key ─────────────────────────────────────────
+          _buildSectionHeader('Groq AI Key (Free Fallback)'),
+          const SizedBox(height: 12),
+          Semantics(
+            label: 'Groq A I API key, free fast vision fallback',
+            textField: true,
+            child: TextField(
+              controller: _groqApiKeyController,
+              obscureText: _groqApiKeyObscured,
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
+              decoration: InputDecoration(
+                hintText: 'Paste your Groq API key',
+                filled: true,
+                fillColor: AppTheme.cardBackground,
+                prefixIcon:
+                    const Icon(Icons.bolt, color: AppTheme.accentBlue),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    IconButton(
+                      icon: Icon(
+                        _groqApiKeyObscured
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        color: AppTheme.textSecondary,
+                      ),
+                      tooltip: _groqApiKeyObscured ? 'Show key' : 'Hide key',
+                      onPressed: () {
+                        setState(() =>
+                            _groqApiKeyObscured = !_groqApiKeyObscured);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.save, color: AppTheme.accentBlue),
+                      tooltip: 'Save Groq key',
+                      onPressed: () => _saveGroqApiKey(settings),
+                    ),
+                  ],
+                ),
+              ),
+              onSubmitted: (_) => _saveGroqApiKey(settings),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            settings.hasGroqApiKey
+                ? '✓ Groq key saved. Ultra-fast AI fallback enabled.'
+                : 'Free & fast AI with vision. Get a key at console.groq.com.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: settings.hasGroqApiKey
+                      ? AppTheme.success
+                      : AppTheme.textSecondary,
+                ),
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── Ollama Local AI Server ────────────────────────────────
+          _buildSectionHeader('Ollama Local AI Server'),
+          const SizedBox(height: 12),
+          Semantics(
+            label: 'Ollama server URL for local A I processing',
+            textField: true,
+            child: TextField(
+              controller: _ollamaServerUrlController,
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
+              decoration: InputDecoration(
+                hintText: 'http://192.168.1.100:11434',
+                filled: true,
+                fillColor: AppTheme.cardBackground,
+                prefixIcon: const Icon(Icons.computer, color: AppTheme.accentBlue),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.save, color: AppTheme.accentBlue),
+                  tooltip: 'Save Ollama URL',
+                  onPressed: () => _saveOllamaServerUrl(settings),
+                ),
+              ),
+              onSubmitted: (_) => _saveOllamaServerUrl(settings),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            settings.hasOllamaServer
+                ? '✓ Ollama server configured. Free local AI fallback active.'
+                : 'Run Ollama on your PC for free offline AI. No internet needed.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: settings.hasOllamaServer
+                      ? AppTheme.success
+                      : AppTheme.textSecondary,
+                ),
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── OpenRouteService API Key ──────────────────────────────
+          _buildSectionHeader('Navigation API Key'),
+          const SizedBox(height: 12),
+          Semantics(
+            label: 'OpenRouteService API key for walking directions',
+            textField: true,
+            child: TextField(
+              controller: _orsApiKeyController,
+              obscureText: _orsApiKeyObscured,
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
+              decoration: InputDecoration(
+                hintText: 'Paste your OpenRouteService API key',
+                filled: true,
+                fillColor: AppTheme.cardBackground,
+                prefixIcon:
+                    const Icon(Icons.navigation, color: AppTheme.accentBlue),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    IconButton(
+                      icon: Icon(
+                        _orsApiKeyObscured
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        color: AppTheme.textSecondary,
+                      ),
+                      tooltip: _orsApiKeyObscured ? 'Show key' : 'Hide key',
+                      onPressed: () {
+                        setState(() => _orsApiKeyObscured = !_orsApiKeyObscured);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.save, color: AppTheme.accentBlue),
+                      tooltip: 'Save Navigation API key',
+                      onPressed: () => _saveOrsApiKey(settings),
+                    ),
+                  ],
+                ),
+              ),
+              onSubmitted: (_) => _saveOrsApiKey(settings),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            settings.hasOrsApiKey
+                ? '✓ Navigation key saved. Walking directions enabled.'
+                : 'Free key for walking directions. Get one at openrouteservice.org.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: settings.hasOrsApiKey
+                      ? AppTheme.success
+                      : AppTheme.textSecondary,
+                ),
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── Weather API Key ─────────────────────────────────────────
+          _buildSectionHeader('Weather API Key'),
+          const SizedBox(height: 12),
+          Semantics(
+            label: 'OpenWeatherMap API key for weather alerts',
+            textField: true,
+            child: TextField(
+              controller: _weatherApiKeyController,
+              obscureText: _weatherApiKeyObscured,
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
+              decoration: InputDecoration(
+                hintText: 'Paste your OpenWeatherMap API key',
+                filled: true,
+                fillColor: AppTheme.cardBackground,
+                prefixIcon:
+                    const Icon(Icons.cloud, color: AppTheme.accentBlue),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    IconButton(
+                      icon: Icon(
+                        _weatherApiKeyObscured
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        color: AppTheme.textSecondary,
+                      ),
+                      tooltip: _weatherApiKeyObscured ? 'Show key' : 'Hide key',
+                      onPressed: () {
+                        setState(
+                            () => _weatherApiKeyObscured = !_weatherApiKeyObscured);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.save, color: AppTheme.accentBlue),
+                      tooltip: 'Save Weather API key',
+                      onPressed: () => _saveWeatherApiKey(settings),
+                    ),
+                  ],
+                ),
+              ),
+              onSubmitted: (_) => _saveWeatherApiKey(settings),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            settings.hasWeatherApiKey
+                ? '✓ Weather key saved. Weather alerts enabled.'
+                : 'Free key for weather updates. Get one at openweathermap.org.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: settings.hasWeatherApiKey
                       ? AppTheme.success
                       : AppTheme.textSecondary,
                 ),
@@ -307,7 +593,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Text(
       title,
       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: AppTheme.primaryYellow,
+            color: AppTheme.accentBlue,
             fontWeight: FontWeight.w700,
           ),
     );
@@ -338,7 +624,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: <Widget>[
             Row(
               children: <Widget>[
-                Icon(icon, color: AppTheme.primaryYellow, size: 20),
+                Icon(icon, color: AppTheme.accentBlue, size: 20),
                 const SizedBox(width: 10),
                 Text(
                   label,
@@ -351,7 +637,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   displayValue,
                   style: const TextStyle(
-                    color: AppTheme.primaryYellow,
+                    color: AppTheme.accentBlue,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -362,7 +648,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               min: min,
               max: max,
               divisions: divisions,
-              activeColor: AppTheme.primaryYellow,
+              activeColor: AppTheme.accentBlue,
               inactiveColor: AppTheme.textHint,
               onChanged: onChanged,
             ),
@@ -374,6 +660,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveEmergencyContact(SettingsProvider settings) async {
     final String value = _emergencyContactController.text.trim();
+
+    if (value.isNotEmpty && !_isPlausiblePhoneNumber(value)) {
+      HapticFeedback.heavyImpact();
+      if (mounted) {
+        context.read<TtsService>().speak(
+          'That does not look like a valid phone number. '
+          'Please enter digits, optionally starting with a plus sign.',
+        );
+      }
+      return;
+    }
+
     await settings.setEmergencyContact(value);
     HapticFeedback.heavyImpact();
     if (mounted) {
@@ -385,6 +683,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Returns true if [value] looks like a plausible phone number.
+  /// Accepts digits, spaces, hyphens, parentheses, and an optional
+  /// leading '+'. Requires at least 7 digit characters.
+  static bool _isPlausiblePhoneNumber(String value) {
+    final String digitsOnly = value.replaceAll(RegExp(r'[^\d]'), '');
+    if (digitsOnly.length < 7 || digitsOnly.length > 15) return false;
+    // Must only contain phone-valid characters.
+    return RegExp(r'^[+\d\s\-().]+$').hasMatch(value);
+  }
+
   Future<void> _saveApiKey(SettingsProvider settings) async {
     final String value = _apiKeyController.text.trim();
     await settings.setApiKey(value);
@@ -392,6 +700,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) {
       context.read<TtsService>().speak(
         value.isEmpty ? 'API key removed.' : 'API key saved. Scene description is now enabled.',
+      );
+    }
+  }
+
+  Future<void> _saveOpenRouterApiKey(SettingsProvider settings) async {
+    final String value = _openRouterApiKeyController.text.trim();
+    await settings.setOpenRouterApiKey(value);
+    HapticFeedback.heavyImpact();
+    if (mounted) {
+      context.read<TtsService>().speak(
+        value.isEmpty
+            ? 'OpenRouter key removed.'
+            : 'OpenRouter key saved. Auto-fallback is now active.',
+      );
+    }
+  }
+
+  Future<void> _saveGroqApiKey(SettingsProvider settings) async {
+    final String value = _groqApiKeyController.text.trim();
+    await settings.setGroqApiKey(value);
+    HapticFeedback.heavyImpact();
+    if (mounted) {
+      context.read<TtsService>().speak(
+        value.isEmpty
+            ? 'Groq key removed.'
+            : 'Groq key saved. Fast AI fallback is now active.',
+      );
+    }
+  }
+
+  Future<void> _saveOllamaServerUrl(SettingsProvider settings) async {
+    final String value = _ollamaServerUrlController.text.trim();
+    await settings.setOllamaServerUrl(value);
+    HapticFeedback.heavyImpact();
+    if (mounted) {
+      context.read<TtsService>().speak(
+        value.isEmpty
+            ? 'Ollama server removed.'
+            : 'Ollama server saved. Local AI fallback is now active.',
+      );
+    }
+  }
+
+  Future<void> _saveWeatherApiKey(SettingsProvider settings) async {
+    final String value = _weatherApiKeyController.text.trim();
+    await settings.setWeatherApiKey(value);
+    HapticFeedback.heavyImpact();
+    if (mounted) {
+      context.read<TtsService>().speak(
+        value.isEmpty
+            ? 'Weather key removed.'
+            : 'Weather key saved. Weather alerts are now enabled.',
+      );
+    }
+  }
+
+  Future<void> _saveOrsApiKey(SettingsProvider settings) async {
+    final String value = _orsApiKeyController.text.trim();
+    await settings.setOrsApiKey(value);
+    HapticFeedback.heavyImpact();
+    if (mounted) {
+      context.read<TtsService>().speak(
+        value.isEmpty
+            ? 'Navigation key removed.'
+            : 'Navigation key saved. Walking directions are now enabled.',
       );
     }
   }

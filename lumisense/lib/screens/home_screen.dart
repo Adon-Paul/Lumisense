@@ -22,7 +22,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Announce screen to visually impaired users
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<TtsService>().speak(
@@ -33,7 +32,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _openCameraLiveView({CameraInitialAction action = CameraInitialAction.none}) {
+  void _openCameraLiveView(
+      {CameraInitialAction action = CameraInitialAction.none}) {
     HapticFeedback.mediumImpact();
     Navigator.push(
       context,
@@ -49,15 +49,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final SettingsProvider settings = context.read<SettingsProvider>();
 
     if (!settings.hasEmergencyContact) {
-      await tts.speak('No emergency contact set. Please add one in Settings.');
+      await tts.speakUrgent(
+          'No emergency contact set. Please add one in Settings.');
       return;
     }
 
-    await tts.speak('Sending emergency message.');
-    final SosResult result =
-        await SosService.sendEmergencySms(settings.emergencyContact);
-    if (mounted) {
-      await tts.speak(result.message);
+    await tts.speakUrgent('Sending emergency message.');
+    try {
+      final SosResult result =
+          await SosService.sendEmergencySms(settings.emergencyContact);
+      if (mounted) {
+        await tts.speak(result.message);
+      }
+    } catch (e) {
+      if (mounted) {
+        await tts.speakUrgent(
+            'Emergency message failed. Please try calling for help.');
+      }
     }
   }
 
@@ -68,7 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: <Widget>[
-            // ── Header ──────────────────────────────────────────────────
+            // ── Header ────────────────────────────────────────────────────
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -76,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: <Widget>[
                   ExcludeSemantics(
                     child: Icon(Icons.lightbulb_outline,
-                        color: AppTheme.primaryYellow, size: 24),
+                        color: AppTheme.accentBlue, size: 24),
                   ),
                   const SizedBox(width: 10),
                   Text(
@@ -87,7 +95,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                   ),
                   const Spacer(),
-                  // Settings gear
                   Semantics(
                     label: 'Settings',
                     button: true,
@@ -108,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // ── Main content ────────────────────────────────────────────
+            // ── Main content ──────────────────────────────────────────────
             Expanded(
               child: Center(
                 child: Padding(
@@ -116,50 +123,48 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      // ── Large action button ───────────────────────────
+                      // ── Large action button ─────────────────────────────
+                      // Uses Material + InkWell for proper a11y and ripple.
                       Semantics(
                         label:
                             'Describe my surroundings. Opens camera for AI scene description.',
                         button: true,
-                        child: GestureDetector(
-                          onTap: () => _openCameraLiveView(
-                            action: CameraInitialAction.describe,
-                          ),
-                          child: Container(
-                            width: 280,
-                            height: 280,
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryYellow,
-                              shape: BoxShape.circle,
-                              boxShadow: <BoxShadow>[
-                                BoxShadow(
-                                  color: AppTheme.primaryYellow
-                                      .withValues(alpha: 0.3),
-                                  blurRadius: 20,
-                                ),
-                              ],
+                        child: Material(
+                          color: AppTheme.accentBlue,
+                          shape: const CircleBorder(),
+                          elevation: 4,
+                          shadowColor:
+                              AppTheme.accentBlue.withValues(alpha: 0.3),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => _openCameraLiveView(
+                              action: CameraInitialAction.describe,
                             ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: <Widget>[
-                                const Icon(Icons.remove_red_eye_outlined,
-                                    size: 64,
-                                    color: AppTheme.darkBackground),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Describe My\nSurroundings',
-                                  textAlign: TextAlign.center,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleLarge
-                                      ?.copyWith(
-                                        color: AppTheme.darkBackground,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 20,
-                                        height: 1.2,
-                                      ),
-                                ),
-                              ],
+                            child: SizedBox(
+                              width: 280,
+                              height: 280,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: <Widget>[
+                                  const Icon(Icons.remove_red_eye_outlined,
+                                      size: 64,
+                                      color: AppTheme.darkBackground),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Describe My\nSurroundings',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(
+                                          color: AppTheme.darkBackground,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 20,
+                                          height: 1.2,
+                                        ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -167,7 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
                       const SizedBox(height: 40),
 
-                      // ── Quick access buttons ──────────────────────────
+                      // ── Quick access buttons ────────────────────────────
+                      // Quick access buttons — row 1
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: <Widget>[
@@ -186,10 +192,58 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           _buildQuickButton(
+                            icon: Icons.qr_code_scanner,
+                            label: 'Pay',
+                            onTap: () => _openCameraLiveView(
+                              action: CameraInitialAction.scanPayment,
+                            ),
+                          ),
+                          _buildQuickButton(
                             icon: Icons.sos,
                             label: 'SOS',
                             onTap: _onSosTap,
                             color: AppTheme.error,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Quick access buttons — row 2
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: <Widget>[
+                          _buildQuickButton(
+                            icon: Icons.currency_rupee,
+                            label: 'Currency',
+                            onTap: () => _openCameraLiveView(
+                              action: CameraInitialAction.identifyCurrency,
+                            ),
+                          ),
+                          _buildQuickButton(
+                            icon: Icons.light_mode,
+                            label: 'Light',
+                            onTap: () => _openCameraLiveView(
+                              action: CameraInitialAction.checkBrightness,
+                            ),
+                          ),
+                          _buildQuickButton(
+                            icon: Icons.cloud,
+                            label: 'Weather',
+                            onTap: () => _openCameraLiveView(
+                              action: CameraInitialAction.checkWeather,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: <Widget>[
+                          _buildQuickButton(
+                            icon: Icons.people,
+                            label: 'People',
+                            onTap: () => _openCameraLiveView(
+                              action: CameraInitialAction.detectPeople,
+                            ),
                           ),
                         ],
                       ),
@@ -202,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
 
-      // ── Bottom navigation ─────────────────────────────────────────────
+      // ── Bottom navigation ───────────────────────────────────────────────
       bottomNavigationBar: Container(
         color: AppTheme.darkBackground,
         padding: const EdgeInsets.only(bottom: 16, top: 8),
@@ -252,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ─── Quick button with 72dp touch target ───────────────────────────────
+  // ─── Quick button with >=48dp touch target ──────────────────────────────
 
   Widget _buildQuickButton({
     required IconData icon,
@@ -270,9 +324,8 @@ class _HomeScreenState extends State<HomeScreen> {
           HapticFeedback.heavyImpact();
           onTap();
         },
-        child: SizedBox(
-          width: 80,
-          height: 80,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 80, minHeight: 80),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
@@ -301,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ─── Bottom nav item ──────────────────────────────────────────────────
+  // ─── Bottom nav item — >=48dp touch target ─────────────────────────────
 
   Widget _buildNavItem({
     required IconData icon,
@@ -310,35 +363,39 @@ class _HomeScreenState extends State<HomeScreen> {
     bool isActive = false,
   }) {
     final Color color =
-        isActive ? AppTheme.primaryYellow : AppTheme.textSecondary;
+        isActive ? AppTheme.accentBlue : AppTheme.textSecondary;
 
     return Semantics(
       label: label,
       button: true,
       child: GestureDetector(
         onTap: onTap,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: isActive
-                  ? BoxDecoration(
-                      color: AppTheme.primaryYellow,
-                      borderRadius: BorderRadius.circular(8),
-                    )
-                  : null,
-              child: Icon(icon,
-                  color:
-                      isActive ? AppTheme.darkBackground : AppTheme.textSecondary,
-                  size: 24),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(color: color, fontSize: 10),
-            ),
-          ],
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: isActive
+                    ? BoxDecoration(
+                        color: AppTheme.accentBlue,
+                        borderRadius: BorderRadius.circular(8),
+                      )
+                    : null,
+                child: Icon(icon,
+                    color: isActive
+                        ? AppTheme.darkBackground
+                        : AppTheme.textSecondary,
+                    size: 24),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(color: color, fontSize: 10),
+              ),
+            ],
+          ),
         ),
       ),
     );

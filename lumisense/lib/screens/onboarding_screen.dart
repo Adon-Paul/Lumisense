@@ -180,7 +180,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       filled: true,
                       fillColor: AppTheme.cardBackground,
                       prefixIcon:
-                          Icon(Icons.phone, color: AppTheme.primaryYellow),
+                          Icon(Icons.phone, color: AppTheme.accentBlue),
                     ),
                   ),
                 ),
@@ -211,7 +211,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       filled: true,
                       fillColor: AppTheme.cardBackground,
                       prefixIcon:
-                          Icon(Icons.key, color: AppTheme.primaryYellow),
+                          Icon(Icons.key, color: AppTheme.accentBlue),
                     ),
                   ),
                 ),
@@ -235,7 +235,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     child: ElevatedButton(
                       onPressed: _handleContinue,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryYellow,
+                        backgroundColor: AppTheme.accentBlue,
                         foregroundColor: AppTheme.darkBackground,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -265,7 +265,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Text(
       text,
       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: AppTheme.primaryYellow,
+            color: AppTheme.accentBlue,
             fontWeight: FontWeight.w600,
           ),
     );
