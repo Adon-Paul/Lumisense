@@ -15,6 +15,7 @@ import 'package:lumisense/screens/home_screen.dart';
 import 'package:lumisense/screens/onboarding_screen.dart';
 import 'package:lumisense/screens/settings_screen.dart';
 import 'package:lumisense/screens/splash_screen.dart';
+import 'package:lumisense/services/model_manager.dart';
 import 'package:lumisense/services/tts_service.dart';
 import 'package:lumisense/utils/theme.dart';
 
@@ -81,6 +82,14 @@ Future<void> main() async {
           create: (ctx) => HistoryProvider(
             prefs: ctx.read<SharedPreferences>(),
           ),
+        ),
+
+        // On-device model manager (download, cache, lifecycle).
+        Provider<ModelManager>(
+          create: (ctx) => ModelManager(
+            prefs: ctx.read<SharedPreferences>(),
+          ),
+          dispose: (_, mgr) => mgr.dispose(),
         ),
       ],
       child: const LumiSenseApp(),

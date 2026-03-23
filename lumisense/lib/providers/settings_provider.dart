@@ -19,6 +19,7 @@ const String _kWeatherApiKey = 'weatherApiKey';
 const String _kOpenRouterApiKey = 'openRouterApiKey';
 const String _kGroqApiKey = 'groqApiKey';
 const String _kOllamaServerUrl = 'ollamaServerUrl';
+const String _kUseOnDeviceModels = 'useOnDeviceModels';
 
 /// Stores and persists user-configurable app settings.
 ///
@@ -49,6 +50,7 @@ class SettingsProvider extends ChangeNotifier {
     _pitch = _prefs.getDouble(_kPitch) ?? 1.0;
     _emergencyContact = _prefs.getString(_kEmergencyContact) ?? '';
     _powerReadMode = _prefs.getBool(_kPowerReadMode) ?? true;
+    _useOnDeviceModels = _prefs.getBool(_kUseOnDeviceModels) ?? false;
     // API key is loaded asynchronously — call loadApiKey() after construction.
   }
 
@@ -69,6 +71,7 @@ class SettingsProvider extends ChangeNotifier {
   String _groqApiKey = '';
   String _ollamaServerUrl = '';
   bool _powerReadMode = true;
+  bool _useOnDeviceModels = false;
 
   // ─── Getters ─────────────────────────────────────────────────────────────────
 
@@ -104,6 +107,9 @@ class SettingsProvider extends ChangeNotifier {
   bool get hasOllamaServer => _ollamaServerUrl.isNotEmpty;
 
   bool get hasEmergencyContact => _emergencyContact.isNotEmpty;
+
+  /// Whether to prefer on-device models over cloud APIs.
+  bool get useOnDeviceModels => _useOnDeviceModels;
 
   // ─── TTS settings (async — bridge to TtsService) ─────────────────────────
 
@@ -158,6 +164,14 @@ class SettingsProvider extends ChangeNotifier {
     if (_powerReadMode == value) return;
     _powerReadMode = value;
     await _prefs.setBool(_kPowerReadMode, value);
+    notifyListeners();
+  }
+
+  /// Enables/disables on-device AI models (SmolVLM2 + Gemma 3n).
+  Future<void> setUseOnDeviceModels(bool value) async {
+    if (_useOnDeviceModels == value) return;
+    _useOnDeviceModels = value;
+    await _prefs.setBool(_kUseOnDeviceModels, value);
     notifyListeners();
   }
 

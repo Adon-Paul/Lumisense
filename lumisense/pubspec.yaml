@@ -83,6 +83,11 @@ dependencies:
   google_mlkit_face_detection: ^0.13.2
   google_mlkit_pose_detection: ^0.14.1
 
+  # On-device LLM inference (llama.cpp via Dart FFI)
+  llamadart: ^0.6.7
+  # Resumable large file downloads (for GGUF models)
+  dio: ^5.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -19,6 +19,7 @@ enum VoiceCommand {
   checkWeather,
   callContact,
   detectPeople,
+  toggleOnDevice,
   help,
   sos,
   stop,
@@ -240,6 +241,16 @@ class SttService {
       return VoiceCommand.detectPeople;
     }
 
+    // On-device AI toggle
+    if (lower.contains('offline mode') ||
+        lower.contains('on device') ||
+        lower.contains('local model') ||
+        lower.contains('on-device') ||
+        lower.contains('switch to local') ||
+        lower.contains('switch to cloud')) {
+      return VoiceCommand.toggleOnDevice;
+    }
+
     // UPI Payment / QR scan
     if (lower.contains('pay') ||
         lower.contains('payment') ||
@@ -341,6 +352,7 @@ class SttService {
       'Say "Weather" to hear the current weather. '
       'Say "Call" followed by a name to call a contact. '
       'Say "People" or "Who is there" to detect faces. '
+      'Say "Offline mode" to toggle on-device A I. '
       'Say "Help" for this list. '
       'Say "Emergency" for SOS. '
       'Say "Stop" to cancel.';

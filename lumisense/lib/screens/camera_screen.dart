@@ -11,6 +11,9 @@ import 'package:lumisense/providers/history_provider.dart';
 import 'package:lumisense/providers/settings_provider.dart';
 import 'package:lumisense/services/directions_service.dart';
 import 'package:lumisense/services/gemini_service.dart';
+import 'package:lumisense/services/model_manager.dart';
+import 'package:lumisense/services/on_device_orchestrator.dart';
+import 'package:lumisense/services/on_device_vision_service.dart';
 import 'package:lumisense/services/navigation_mode_controller.dart';
 import 'package:lumisense/models/upi_payment_info.dart';
 import 'package:lumisense/services/brightness_detector_service.dart';
@@ -101,6 +104,7 @@ class _CameraScreenState extends State<CameraScreen>
   GeminiService? _geminiService;
   String? _geminiApiKey;
   String? _openRouterApiKey;
+  OnDeviceOrchestrator? _onDeviceOrchestrator;
 
   // ─── Turn-by-turn navigation ────────────────────────────────────────────
   DirectionsService? _directionsService;
@@ -177,6 +181,7 @@ class _CameraScreenState extends State<CameraScreen>
     _navController.dispose();
     _directionsService?.removeListener(_onDirectionsChanged);
     _directionsService?.dispose();
+    _onDeviceOrchestrator?.dispose();
     super.dispose();
   }
 
@@ -314,6 +319,8 @@ class _CameraScreenState extends State<CameraScreen>
         _onPeopleTap();
       case VoiceCommand.navigation:
         _toggleNavigation();
+      case VoiceCommand.toggleOnDevice:
+        _toggleOnDeviceMode();
       case VoiceCommand.help:
         context.read<TtsService>().speak(SttService.helpText);
       case VoiceCommand.unknown:
@@ -363,6 +370,19 @@ class _CameraScreenState extends State<CameraScreen>
   // ═══════════════════════════════════════════════════════════════════════════
   // Navigation Mode
   // ═══════════════════════════════════════════════════════════════════════════
+
+  void _toggleOnDeviceMode() {
+    final TtsService tts = context.read<TtsService>();
+    final SettingsProvider settings = context.read<SettingsProvider>();
+    final bool newValue = !settings.useOnDeviceModels;
+    settings.setUseOnDeviceModels(newValue);
+    HapticFeedback.mediumImpact();
+    tts.speak(
+      newValue
+          ? 'Switched to on-device A I. Models will run locally.'
+          : 'Switched to cloud A I. Using online providers.',
+    );
+  }
 
   void _toggleNavigation() {
     if (!_yoloViewReady) {
@@ -728,18 +748,27 @@ class _CameraScreenState extends State<CameraScreen>
     final HistoryProvider history = context.read<HistoryProvider>();
     final SettingsProvider settings = context.read<SettingsProvider>();
 
-    if (!settings.hasApiKey) {
+    // Check if we can use on-device or cloud
+    final bool useOnDevice = await _shouldUseOnDevice();
+
+    if (!useOnDevice && !settings.hasApiKey) {
       HapticFeedback.heavyImpact();
       await tts.speak(
-        'No Gemini API key configured. Please add your key in the Settings screen.',
+        'No AI configured. Please download on-device models or add an API key in Settings.',
       );
       return;
     }
 
     // Rate limiting: prevent rapid successive calls.
-    final GeminiService gemini = _getGeminiService(settings);
-    final Duration sinceLast =
-        DateTime.now().difference(gemini.lastCallTime);
+    DateTime lastCall;
+    if (useOnDevice) {
+      final orchestrator = _getOrchestrator();
+      lastCall = orchestrator.visionService.lastCallTime;
+    } else {
+      final GeminiService gemini = _getGeminiService(settings);
+      lastCall = gemini.lastCallTime;
+    }
+    final Duration sinceLast = DateTime.now().difference(lastCall);
     if (sinceLast < _geminiCooldown) {
       await tts.speak('Please wait a moment before requesting another description.');
       return;
@@ -747,7 +776,9 @@ class _CameraScreenState extends State<CameraScreen>
 
     setState(() {
       _isProcessing = true;
-      _statusMessage = 'Describing scene...';
+      _statusMessage = useOnDevice
+          ? 'Describing scene (on-device)...'
+          : 'Describing scene...';
       _lastResultPreview = null;
     });
 
@@ -760,22 +791,60 @@ class _CameraScreenState extends State<CameraScreen>
       final Uint8List frameBytes = await _captureFrame();
       if (!mounted) return;
 
-      final String description = await gemini.describeScene(frameBytes);
+      String description;
+      if (useOnDevice) {
+        final orchestrator = _getOrchestrator();
+        description = await orchestrator.describeScene(frameBytes);
+      } else {
+        final GeminiService gemini = _getGeminiService(settings);
+        description = await gemini.describeScene(frameBytes);
+      }
       if (!mounted) return;
 
       setState(() {
-        _statusMessage = 'Scene described';
+        _statusMessage = useOnDevice
+            ? 'Scene described (on-device)'
+            : 'Scene described';
         _lastResultPreview = description;
       });
 
       await history.addEntry(
         type: HistoryEntryType.sceneDescription,
-        title: 'Scene Description',
+        title: useOnDevice
+            ? 'Scene Description (On-Device)'
+            : 'Scene Description',
         content: description,
       );
 
       appState.processingState = ProcessingState.speaking;
       await tts.speak(description);
+    } on OnDeviceModelException catch (e) {
+      // On-device failed — fall back to cloud silently
+      if (!mounted) return;
+      debugPrint('On-device failed, falling back to cloud: ${e.message}');
+      try {
+        final Uint8List frameBytes = await _captureFrame();
+        if (!mounted) return;
+        final GeminiService gemini = _getGeminiService(settings);
+        final String description = await gemini.describeScene(frameBytes);
+        if (!mounted) return;
+        setState(() {
+          _statusMessage = 'Scene described (cloud fallback)';
+          _lastResultPreview = description;
+        });
+        await history.addEntry(
+          type: HistoryEntryType.sceneDescription,
+          title: 'Scene Description',
+          content: description,
+        );
+        appState.processingState = ProcessingState.speaking;
+        await tts.speak(description);
+      } on GeminiApiException catch (cloudError) {
+        if (!mounted) return;
+        setState(() => _statusMessage = 'Description failed.');
+        appState.processingState = ProcessingState.speaking;
+        await tts.speak(cloudError.message);
+      }
     } on GeminiApiException catch (e) {
       if (!mounted) return;
       setState(() => _statusMessage = 'Description failed.');
@@ -815,18 +884,21 @@ class _CameraScreenState extends State<CameraScreen>
     final SettingsProvider settings = context.read<SettingsProvider>();
     final AppStateProvider appState = context.read<AppStateProvider>();
 
-    if (!settings.hasApiKey) {
+    final bool useOnDevice = await _shouldUseOnDevice();
+
+    if (!useOnDevice && !settings.hasApiKey) {
       HapticFeedback.heavyImpact();
       await tts.speak(
-        'No Gemini API key configured. Currency identification requires a Gemini key. '
-        'Please add your key in Settings.',
+        'No AI configured. Please download on-device models or add a Gemini key in Settings.',
       );
       return;
     }
 
     setState(() {
       _isProcessing = true;
-      _statusMessage = 'Identifying currency...';
+      _statusMessage = useOnDevice
+          ? 'Identifying currency (on-device)...'
+          : 'Identifying currency...';
       _lastResultPreview = null;
     });
 
@@ -839,9 +911,15 @@ class _CameraScreenState extends State<CameraScreen>
       final Uint8List frameBytes = await _captureFrame();
       if (!mounted) return;
 
-      final CurrencyDetectorService service =
-          _getCurrencyService(settings.apiKey);
-      final String result = await service.identifyCurrency(frameBytes);
+      String result;
+      if (useOnDevice) {
+        final orchestrator = _getOrchestrator();
+        result = await orchestrator.identifyCurrency(frameBytes);
+      } else {
+        final CurrencyDetectorService service =
+            _getCurrencyService(settings.apiKey);
+        result = await service.identifyCurrency(frameBytes);
+      }
       if (!mounted) return;
 
       HapticFeedback.heavyImpact();
@@ -2108,6 +2186,25 @@ class _CameraScreenState extends State<CameraScreen>
       _openRouterApiKey = orKey;
     }
     return _geminiService!;
+  }
+
+  /// Returns the on-device orchestrator, creating it lazily.
+  OnDeviceOrchestrator _getOrchestrator() {
+    if (_onDeviceOrchestrator == null) {
+      final modelMgr = context.read<ModelManager>();
+      _onDeviceOrchestrator = OnDeviceOrchestrator(modelManager: modelMgr);
+    }
+    return _onDeviceOrchestrator!;
+  }
+
+  /// Whether to use on-device models for the current operation.
+  /// Returns true only if enabled in settings AND the vision model is ready.
+  Future<bool> _shouldUseOnDevice() async {
+    final settings = context.read<SettingsProvider>();
+    if (!settings.useOnDeviceModels) return false;
+    final orchestrator = _getOrchestrator();
+    return orchestrator.visionService.isReady ||
+        await orchestrator.isVisionModelReady;
   }
 
   void _triggerInitialActionIfNeeded() {

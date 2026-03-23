@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:lumisense/providers/settings_provider.dart';
+import 'package:lumisense/services/model_manager.dart';
 import 'package:lumisense/services/tts_service.dart';
 import 'package:lumisense/utils/theme.dart';
 
@@ -550,6 +551,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
           ),
 
+          const SizedBox(height: 28),
+
+          // ── On-Device AI Models ─────────────────────────────────────
+          _buildSectionHeader('On-Device AI Models'),
+          const SizedBox(height: 8),
+          Text(
+            'Run AI entirely on your phone — no internet, no API keys, '
+            'no data leaves your device.',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 12),
+
+          // Toggle
+          Semantics(
+            label: 'Use on-device A I models instead of cloud.',
+            toggled: settings.useOnDeviceModels,
+            child: SwitchListTile(
+              value: settings.useOnDeviceModels,
+              activeThumbColor: AppTheme.accentBlue,
+              title: const Text(
+                'Enable On-Device AI',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: const Text(
+                'Use local models for scene description and assistant. '
+                'Falls back to cloud if models not downloaded.',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+              onChanged: (bool value) async {
+                final TtsService tts = context.read<TtsService>();
+                await settings.setUseOnDeviceModels(value);
+                if (!mounted) return;
+                HapticFeedback.mediumImpact();
+                await tts.speak(
+                  value
+                      ? 'On-device A I enabled. Models will run locally on your phone.'
+                      : 'On-device A I disabled. Using cloud providers.',
+                );
+              },
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Model cards
+          ...OnDeviceModel.values.map((model) => _buildModelCard(model)),
+
           const SizedBox(height: 40),
 
           // ── About ───────────────────────────────────────────────────
@@ -656,6 +710,190 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildModelCard(OnDeviceModel model) {
+    final info = ModelManager.models[model]!;
+    final modelMgr = context.read<ModelManager>();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.cardBackground,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  info.supportsVision ? Icons.visibility : Icons.smart_toy,
+                  color: AppTheme.accentBlue,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    info.displayName,
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              info.description,
+              style: const TextStyle(
+                  color: AppTheme.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Download: ~${info.estimatedTotalSizeMB}MB  •  '
+              'RAM: ~${info.estimatedRamMB}MB',
+              style: const TextStyle(
+                  color: AppTheme.textHint, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            // Status + Action buttons
+            FutureBuilder<bool>(
+              future: modelMgr.isModelReady(model),
+              builder: (context, snapshot) {
+                final isReady = snapshot.data ?? false;
+
+                return ValueListenableBuilder<double?>(
+                  valueListenable: modelMgr.downloadProgress[model]!,
+                  builder: (context, progress, _) {
+                    // Currently downloading
+                    if (progress != null) {
+                      return Column(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              backgroundColor: AppTheme.textHint
+                                  .withValues(alpha: 0.3),
+                              valueColor:
+                                  const AlwaysStoppedAnimation<Color>(
+                                      AppTheme.accentBlue),
+                              minHeight: 8,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Downloading ${(progress * 100).toInt()}%',
+                                style: const TextStyle(
+                                    color: AppTheme.accentBlue,
+                                    fontSize: 13),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  modelMgr.cancelDownload(model);
+                                  HapticFeedback.mediumImpact();
+                                },
+                                child: const Text('Cancel',
+                                    style: TextStyle(
+                                        color: AppTheme.error)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    }
+
+                    // Model ready
+                    if (isReady) {
+                      return Row(
+                        children: [
+                          const Icon(Icons.check_circle,
+                              color: AppTheme.success, size: 18),
+                          const SizedBox(width: 6),
+                          const Text('Ready',
+                              style: TextStyle(
+                                  color: AppTheme.success,
+                                  fontWeight: FontWeight.w600)),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () async {
+                              await modelMgr.deleteModel(model);
+                              HapticFeedback.mediumImpact();
+                              if (mounted) {
+                                setState(() {});
+                                context.read<TtsService>().speak(
+                                    '${info.displayName} deleted.');
+                              }
+                            },
+                            icon: const Icon(Icons.delete_outline,
+                                size: 18, color: AppTheme.error),
+                            label: const Text('Delete',
+                                style:
+                                    TextStyle(color: AppTheme.error)),
+                          ),
+                        ],
+                      );
+                    }
+
+                    // Not downloaded
+                    return SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _downloadModel(model),
+                        icon: const Icon(Icons.download, size: 18),
+                        label: Text(
+                            'Download (~${info.estimatedTotalSizeMB}MB)'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accentBlue,
+                          foregroundColor: AppTheme.darkBackground,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _downloadModel(OnDeviceModel model) async {
+    final modelMgr = context.read<ModelManager>();
+    final tts = context.read<TtsService>();
+    final info = ModelManager.models[model]!;
+
+    HapticFeedback.mediumImpact();
+    await tts.speak(
+        'Downloading ${info.displayName}. This may take a few minutes on Wi-Fi.');
+
+    try {
+      await modelMgr.downloadModel(model);
+      if (mounted) {
+        setState(() {});
+        HapticFeedback.heavyImpact();
+        await tts.speak('${info.displayName} downloaded and ready.');
+      }
+    } catch (e) {
+      if (mounted) {
+        HapticFeedback.heavyImpact();
+        await tts.speak('Download failed. Please check your internet connection and try again.');
+      }
+      debugPrint('Model download error: $e');
+    }
   }
 
   Future<void> _saveEmergencyContact(SettingsProvider settings) async {
