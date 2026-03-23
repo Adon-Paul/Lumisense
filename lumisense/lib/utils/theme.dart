@@ -27,12 +27,12 @@ class AppTheme {
         primary: primaryYellow,
         secondary: primaryYellow,
         surface: darkBackground,
-        background: darkBackground,
+        surfaceContainerHighest: darkBackground,
         error: error,
         onPrimary: darkBackground,
         onSecondary: darkBackground,
         onSurface: textPrimary,
-        onBackground: textPrimary,
+        onSurfaceVariant: textPrimary,
         onError: textPrimary,
       ),
       
@@ -226,7 +226,7 @@ class AppStyles {
     color: AppTheme.cardBackground,
     borderRadius: BorderRadius.circular(16),
     border: Border.all(
-      color: AppTheme.textHint.withOpacity(0.2),
+      color: AppTheme.textHint.withValues(alpha: 0.2),
       width: 1,
     ),
   );
