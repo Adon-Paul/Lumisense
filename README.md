@@ -1,126 +1,63 @@
-# LumiSense 🌟
+# LumiSense
 
-**A Proactive AI Co-Pilot for the Visually Impaired**
+LumiSense is an accessibility-focused AI assistant app for blind and low-vision users, built in Flutter.
 
-LumiSense is an innovative AI-powered navigation and assistance system designed specifically for the visually impaired community. Unlike reactive systems that only respond to commands, LumiSense proactively anticipates user needs and provides intelligent assistance throughout daily activities.
+This repository contains both project-level planning documents and the actual mobile application source under [lumisense](lumisense).
 
-## 🎯 Vision
+## Project In One Minute
 
-To develop a proactive AI co-pilot for the visually impaired that is affordable, scalable, and deeply integrated with the user's life and the Indian digital ecosystem.
+For non-technical readers:
 
-## ✨ Key Features
+- The app uses your phone camera to help you read text, identify objects, navigate, and get help in emergencies.
+- It is designed to speak results clearly and support voice-driven interaction.
+- The current build is a working software demo focused on Android.
 
-### Tier 1: Essential Navigation & Safety
-- Real-time obstacle detection and path quality assessment
-- Drop-off & curb detection with head-level obstacle warnings
-- Ambient light detection for optimal guidance
+For technical readers:
 
-### Tier 2: Information & Object Interaction  
-- Instant text reader with advanced OCR capabilities
-- Intelligent object identification and personalized recognition
-- Live language translation for multilingual support
+- Core runtime is Flutter plus Provider state management.
+- Vision and accessibility stack combines ML Kit, ultralytics_yolo, speech_to_text, and flutter_tts.
+- AI path supports cloud and local execution:
+  - Cloud chain: Gemini -> OpenRouter -> Groq -> Ollama
+  - On-device stack: llama.cpp via llamadart with GGUF model management
 
-### Tier 3: Advanced Scene Understanding
-- Conversational scene descriptions via cloud Vision-Language Models
-- Personalized facial recognition (opt-in) for social interactions
-- Discreet haptic-only mode for sensitive situations
+## Repository Layout
 
-### Tier 4: Integrated Services
-- Smart UPI payments integration (Razorpay API)
-- Ride-sharing assistant for Ola/Uber bookings
-- Public transit navigation with real-time updates
-- Enhanced SOS & emergency response with caregiver connectivity
+- Application code: [lumisense](lumisense)
+- App readme: [lumisense/README.md](lumisense/README.md)
+- Current architecture doc: [lumisense/ARCHITECTURE.md](lumisense/ARCHITECTURE.md)
+- Feature catalog: [lumisense/FEATURES.md](lumisense/FEATURES.md)
+- Setup guide: [lumisense/SETUP.md](lumisense/SETUP.md)
+- Project specification/context: [lumisense/PROJECT_SPEC.md](lumisense/PROJECT_SPEC.md)
+- Additional context and plans: [CLAUDE.md](CLAUDE.md), [LUMISENSE_FUTURE_CONTEXT.md](LUMISENSE_FUTURE_CONTEXT.md), [docs/superpowers/plans/2026-03-24-fix-on-device-model-stack.md](docs/superpowers/plans/2026-03-24-fix-on-device-model-stack.md)
 
-### Tier 5: User Experience
-- Gamified training modules for skill development
-- Smart power management with deep sleep optimization
-- Intelligent lens obstruction detection and warnings
+## What Is Implemented Today
 
-### Tier 6: Proactive Intelligence
-- Google Calendar integration for schedule awareness
-- Google Fit integration for health monitoring
-- Proactive weather alerts and recommendations
+Highlights from the current app implementation:
 
-### Tier 7: Health & Wellness
-- Comprehensive medication management system
+- OCR read-aloud
+- Object identification and real-time navigation announcements
+- Scene description with provider fallback
+- On-device model execution path
+- QR scanning and UPI payment handoff
+- Currency detection
+- Weather and brightness checks
+- Face and pose-based people awareness
+- Voice command routing
+- GPS SOS flow and caregiver-focused utilities
+- Turn-by-turn walking directions with map view
 
-## 🏗️ Technical Architecture
+See [lumisense/README.md](lumisense/README.md) for the detailed, implementation-accurate breakdown.
 
-LumiSense uses a sophisticated three-tier distributed architecture:
+## Quick Start
 
-### Edge Layer (Wearable Hardware)
-- **SoC**: ESP32-WROVER-E with 8MB PSRAM
-- **Camera**: OV5640 5MP sensor
-- **Communication**: Wi-Fi MJPEG streaming + Bluetooth Low Energy
-- **Firmware**: C++ with PlatformIO
+From the app folder:
 
-### Hub Layer (Mobile Application)
-- **Framework**: Flutter with Dart
-- **AI Processing**: TensorFlow Lite for on-device inference
-- **Role**: Primary processing "brain" and secure cloud gateway
+```bash
+cd lumisense
+flutter pub get
+flutter run
+```
 
-### Cloud Layer (Backend Services)
-- **Platform**: Google Cloud Platform (GCP)
-- **Architecture**: Serverless with Cloud Functions
-- **Language**: Python
-- **Database**: Cloud Firestore
-- **APIs**: Google Maps, Calendar, Fit, Razorpay, OpenWeatherMap
+## Scope Note
 
-## 🚀 Getting Started
-
-### Prerequisites
-- Flutter SDK (latest stable version)
-- Android Studio / VS Code with Flutter extensions
-- Git for version control
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Adon-Paul/Lumisense.git
-   cd lumisense
-   ```
-
-2. **Install dependencies**
-   ```bash
-   flutter pub get
-   ```
-
-3. **Run the application**
-   ```bash
-   flutter run
-   ```
-
-For detailed setup instructions, see [SETUP.md](SETUP.md).
-
-## 📚 Documentation
-
-- [Project Specification](PROJECT_SPEC.md) - Complete system specification and master context
-- [Technical Architecture](ARCHITECTURE.md) - Detailed technical design and implementation
-- [Features Documentation](FEATURES.md) - Comprehensive feature breakdown
-- [Development Setup](SETUP.md) - Environment setup and development guidelines
-
-## 🤝 Contributing
-
-This is a Final Year Project developed by a 5-person team:
-- Team Lead & AI Specialist
-- Mobile Application Developer  
-- Hardware & IoT Specialist
-- Cloud & Backend Developer
-- Project Manager & QA Lead
-
-## 🌍 Impact & Vision
-
-LumiSense aims to bridge the accessibility gap in the Indian digital ecosystem by:
-- Providing affordable, smartphone-centric architecture
-- Deep integration with local services (UPI, Ola/Uber, public transit)
-- Building a comprehensive support network for users and caregivers
-- Focusing on proactive assistance rather than reactive responses
-
-## 📄 License
-
-This project is part of a Final Year academic project. All rights reserved.
-
-## 📞 Contact
-
-For questions or collaboration opportunities, please reach out through the project repository.
+This codebase is actively evolving. Some documents describe long-term vision; implementation-accurate behavior is always represented by the source code in [lumisense/lib](lumisense/lib) and the app-focused docs in [lumisense](lumisense).

@@ -23,9 +23,6 @@ class OnDeviceOrchestrator {
   final OnDeviceVisionService visionService;
   final OnDeviceAssistantService assistantService;
 
-  /// Whether on-device mode is enabled in settings.
-  bool get isEnabled => _modelManager.useOnDeviceModels;
-
   // ─── Model Readiness ────────────────────────────────────────────────────────
 
   /// True if the vision model is downloaded and ready to load.
@@ -108,6 +105,14 @@ class OnDeviceOrchestrator {
     assistantService.resetConversation();
   }
 
+  // ─── Cancellation ─────────────────────────────────────────────────────────
+
+  /// Cancels all in-progress inference operations.
+  void cancelAll() {
+    visionService.cancelInference();
+    assistantService.cancelInference();
+  }
+
   // ─── Cleanup ────────────────────────────────────────────────────────────────
 
   /// Unloads all models to free memory.
@@ -118,9 +123,9 @@ class OnDeviceOrchestrator {
     ]);
   }
 
-  void dispose() {
-    visionService.unload();
-    assistantService.unload();
-    _modelManager.dispose();
+  /// Disposes all resources. Awaits model unloading to prevent native leaks.
+  Future<void> dispose() async {
+    await visionService.unload();
+    await assistantService.unload();
   }
 }

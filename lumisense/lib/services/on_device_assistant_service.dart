@@ -23,11 +23,14 @@ class OnDeviceAssistantService {
 
   LlamaEngine? _engine;
   ChatSession? _session;
-  bool _isLoading = false;
   bool _isReady = false;
+  bool _cancelled = false;
+
+  /// Cached loading future to prevent concurrent loadModel() races.
+  Future<bool>? _loadFuture;
 
   bool get isReady => _isReady;
-  bool get isLoading => _isLoading;
+  bool get isLoading => _loadFuture != null;
 
   // ─── Tool Definitions ───────────────────────────────────────────────────────
 
@@ -122,6 +125,11 @@ class OnDeviceAssistantService {
     ),
   ];
 
+  /// Lookup map for quick tool resolution by name.
+  static final Map<String, ToolDefinition> _toolsByName = {
+    for (final tool in _appTools) tool.name: tool,
+  };
+
   // ─── System Prompt ──────────────────────────────────────────────────────────
 
   static const String _systemPrompt =
@@ -135,10 +143,13 @@ class OnDeviceAssistantService {
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
-  /// Loads the Gemma 3n E2B model. Call once before using.
-  Future<bool> loadModel() async {
+  /// Loads the Gemma 3n E2B model. Safe to call concurrently — only one
+  /// load operation runs at a time.
+  Future<bool> loadModel() =>
+      _loadFuture ??= _doLoadModel().whenComplete(() => _loadFuture = null);
+
+  Future<bool> _doLoadModel() async {
     if (_isReady) return true;
-    if (_isLoading) return false;
 
     final ready =
         await _modelManager.isModelReady(OnDeviceModel.gemma3nAssistant);
@@ -147,7 +158,6 @@ class OnDeviceAssistantService {
       return false;
     }
 
-    _isLoading = true;
     try {
       final mPath =
           await _modelManager.modelPath(OnDeviceModel.gemma3nAssistant);
@@ -169,19 +179,19 @@ class OnDeviceAssistantService {
       _session = null;
       _isReady = false;
       return false;
-    } finally {
-      _isLoading = false;
     }
   }
 
   /// Unloads the model to free RAM.
   Future<void> unload() async {
+    _cancelled = true;
     _session = null;
     if (_engine != null) {
       await _engine!.dispose();
       _engine = null;
     }
     _isReady = false;
+    _cancelled = false;
   }
 
   /// Resets conversation history (starts fresh context).
@@ -194,14 +204,21 @@ class OnDeviceAssistantService {
     }
   }
 
+  /// Cancels any in-progress inference.
+  void cancelInference() {
+    _cancelled = true;
+  }
+
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   /// Processes a user message and returns an [AssistantResponse].
   ///
-  /// The response may contain:
-  /// - A text reply (for conversational responses)
-  /// - A tool call action (for app function invocations)
-  /// - Both (tool call with explanatory text)
+  /// Properly handles llamadart's tool-calling protocol:
+  /// 1. Streams the model's response, accumulating text AND tool call deltas
+  /// 2. If tool calls are present, invokes the matching handlers
+  /// 3. Feeds tool results back to the session via addMessage
+  /// 4. Streams the model's follow-up response
+  /// 5. Parses action markers from handler return values
   Future<AssistantResponse> processMessage(String userMessage) async {
     if (!_isReady || _session == null) {
       throw const OnDeviceAssistantException(
@@ -209,18 +226,27 @@ class OnDeviceAssistantService {
       );
     }
 
+    _cancelled = false;
+
     try {
-      final buffer = StringBuffer();
-      await for (final chunk in _session!.create(
+      // Phase 1: Stream initial response, collecting text + tool calls
+      final result = await _streamAndCollect(
         [LlamaTextContent(userMessage)],
-        tools: _appTools,
-      )) {
-        final content = chunk.choices.first.delta.content;
-        if (content != null) buffer.write(content);
+      );
+
+      if (_cancelled) {
+        return const AssistantResponse(
+            text: 'Request cancelled.');
       }
 
-      final rawResponse = buffer.toString().trim();
-      return _parseResponse(rawResponse);
+      // Phase 2: If tool calls were made, invoke handlers and get follow-up
+      if (result.toolCalls.isNotEmpty) {
+        return await _handleToolCalls(result);
+      }
+
+      // Phase 3: Pure conversational response
+      final text = result.textBuffer.toString().trim();
+      return AssistantResponse(text: text.isNotEmpty ? text : null);
     } catch (e) {
       if (e is OnDeviceAssistantException) rethrow;
       debugPrint('Assistant inference error: $e');
@@ -231,6 +257,10 @@ class OnDeviceAssistantService {
   }
 
   /// Streaming version of [processMessage] for real-time TTS.
+  ///
+  /// Yields text tokens as they arrive. If the model makes a tool call,
+  /// the handler result is yielded as a single chunk followed by the
+  /// model's follow-up text.
   Stream<String> processMessageStream(String userMessage) async* {
     if (!_isReady || _session == null) {
       throw const OnDeviceAssistantException(
@@ -238,52 +268,248 @@ class OnDeviceAssistantService {
       );
     }
 
+    _cancelled = false;
+
+    // Phase 1: Stream initial response
+    final toolCallBuilders = <int, _ToolCallBuilder>{};
+    final textBuffer = StringBuffer();
+
     await for (final chunk in _session!.create(
       [LlamaTextContent(userMessage)],
       tools: _appTools,
     )) {
-      final content = chunk.choices.first.delta.content;
-      if (content != null) yield content;
+      if (_cancelled) return;
+
+      final delta = chunk.choices.first.delta;
+
+      // Yield text tokens immediately for TTS
+      if (delta.content != null) {
+        textBuffer.write(delta.content);
+        yield delta.content!;
+      }
+
+      // Accumulate tool call deltas
+      _accumulateToolCalls(delta, toolCallBuilders);
     }
+
+    // Phase 2: If tool calls present, invoke and yield results
+    if (toolCallBuilders.isNotEmpty) {
+      final toolResults = await _invokeToolHandlers(toolCallBuilders);
+
+      // Feed results back to the session
+      for (final result in toolResults) {
+        _session!.addMessage(LlamaChatMessage.withContent(
+          role: LlamaChatRole.tool,
+          content: [result.toolResultContent],
+        ));
+      }
+
+      // Stream model's follow-up response
+      await for (final chunk in _session!.create([], tools: _appTools)) {
+        if (_cancelled) return;
+        final content = chunk.choices.first.delta.content;
+        if (content != null) yield content;
+      }
+    }
+  }
+
+  // ─── Tool Call Handling ────────────────────────────────────────────────────
+
+  /// Streams a session response, collecting text and tool call deltas.
+  Future<_StreamResult> _streamAndCollect(
+    List<LlamaContentPart> parts,
+  ) async {
+    final toolCallBuilders = <int, _ToolCallBuilder>{};
+    final textBuffer = StringBuffer();
+
+    await for (final chunk in _session!.create(
+      parts,
+      tools: _appTools,
+    )) {
+      if (_cancelled) break;
+
+      final delta = chunk.choices.first.delta;
+
+      if (delta.content != null) {
+        textBuffer.write(delta.content);
+      }
+
+      _accumulateToolCalls(delta, toolCallBuilders);
+    }
+
+    return _StreamResult(
+      textBuffer: textBuffer,
+      toolCalls: toolCallBuilders,
+    );
+  }
+
+  /// Accumulates tool call delta chunks into builders keyed by index.
+  void _accumulateToolCalls(
+    LlamaCompletionChunkDelta delta,
+    Map<int, _ToolCallBuilder> builders,
+  ) {
+    if (delta.toolCalls == null) return;
+
+    for (final tc in delta.toolCalls!) {
+      builders.putIfAbsent(tc.index, () => _ToolCallBuilder());
+      final builder = builders[tc.index]!;
+      if (tc.id != null) builder.id = tc.id;
+      if (tc.type != null) builder.type = tc.type;
+      if (tc.function?.name != null) builder.name = tc.function!.name;
+      if (tc.function?.arguments != null) {
+        builder.argumentsBuffer.write(tc.function!.arguments!);
+      }
+    }
+  }
+
+  /// Invokes tool handlers for all accumulated tool calls.
+  Future<List<_ToolResult>> _invokeToolHandlers(
+    Map<int, _ToolCallBuilder> builders,
+  ) async {
+    final results = <_ToolResult>[];
+    final sortedIndices = builders.keys.toList()..sort();
+
+    for (final index in sortedIndices) {
+      final builder = builders[index]!;
+      final toolName = builder.name ?? '';
+      final tool = _toolsByName[toolName];
+
+      if (tool == null) {
+        debugPrint('Unknown tool call: $toolName');
+        results.add(_ToolResult(
+          id: builder.id,
+          name: toolName,
+          handlerResult: 'Error: Unknown function "$toolName"',
+          toolResultContent: LlamaToolResultContent(
+            id: builder.id,
+            name: toolName,
+            result: 'Error: Unknown function "$toolName"',
+          ),
+        ));
+        continue;
+      }
+
+      // Parse accumulated JSON arguments
+      Map<String, dynamic> args = {};
+      final rawArgs = builder.argumentsBuffer.toString();
+      if (rawArgs.isNotEmpty) {
+        try {
+          args = jsonDecode(rawArgs) as Map<String, dynamic>;
+        } catch (e) {
+          debugPrint('Failed to parse tool call args for $toolName: $e');
+        }
+      }
+
+      // Invoke the handler
+      final handlerResult = await tool.invoke(args);
+      final resultStr = handlerResult?.toString() ?? '';
+
+      results.add(_ToolResult(
+        id: builder.id,
+        name: toolName,
+        handlerResult: resultStr,
+        toolResultContent: LlamaToolResultContent(
+          id: builder.id,
+          name: toolName,
+          result: resultStr,
+        ),
+      ));
+    }
+
+    return results;
+  }
+
+  /// Handles tool calls: invokes handlers, feeds results back, gets follow-up.
+  Future<AssistantResponse> _handleToolCalls(_StreamResult result) async {
+    final toolResults = await _invokeToolHandlers(result.toolCalls);
+
+    // Extract action from handler results (first tool call with an action wins)
+    AppAction? action;
+    String? actionParam;
+    for (final tr in toolResults) {
+      final parsed = _parseActionMarker(tr.handlerResult);
+      if (parsed != null) {
+        action = parsed.action;
+        actionParam = parsed.actionParam;
+        break;
+      }
+    }
+
+    // Feed tool results back to the session
+    for (final tr in toolResults) {
+      _session!.addMessage(LlamaChatMessage.withContent(
+        role: LlamaChatRole.tool,
+        content: [tr.toolResultContent],
+      ));
+    }
+
+    // Get model's follow-up response
+    final followUp = await _streamAndCollect([]);
+    final followUpText = followUp.textBuffer.toString().trim();
+
+    // Combine initial text + follow-up text
+    final initialText = result.textBuffer.toString().trim();
+    final combinedText = [
+      if (initialText.isNotEmpty) initialText,
+      if (followUpText.isNotEmpty) followUpText,
+    ].join(' ').trim();
+
+    return AssistantResponse(
+      text: combinedText.isNotEmpty ? combinedText : null,
+      action: action,
+      actionParam: actionParam,
+    );
   }
 
   // ─── Response Parsing ───────────────────────────────────────────────────────
 
-  AssistantResponse _parseResponse(String raw) {
-    // Check for action markers from tool handlers
-    if (raw.contains('__ACTION:')) {
-      final actionMatch = RegExp(r'__ACTION:(\w+)(?::(.+))?').firstMatch(raw);
-      if (actionMatch != null) {
-        final action = actionMatch.group(1)!;
-        final param = actionMatch.group(2);
-        // Strip action markers from text
-        final text = raw.replaceAll(RegExp(r'__ACTION:\w+(?::[^\s]+)?'), '').trim();
-        return AssistantResponse(
-          text: text.isNotEmpty ? text : null,
-          action: AppAction.fromString(action),
-          actionParam: param,
-        );
-      }
-    }
-
-    // Try parsing as JSON tool call (some models output JSON directly)
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map && decoded.containsKey('name')) {
-        final name = decoded['name'] as String;
-        final args = decoded['arguments'] as Map<String, dynamic>?;
-        return AssistantResponse(
-          action: AppAction.fromString(name),
-          actionParam: args?['name'] as String?,
-        );
-      }
-    } catch (_) {
-      // Not JSON — treat as plain text
-    }
-
-    // Pure conversational response
-    return AssistantResponse(text: raw.isNotEmpty ? raw : null);
+  /// Parses an `__ACTION:name[:param]` marker from a tool handler result.
+  static _ActionParsed? _parseActionMarker(String raw) {
+    final match = RegExp(r'__ACTION:(\w+)(?::(.+))?').firstMatch(raw);
+    if (match == null) return null;
+    return _ActionParsed(
+      action: AppAction.fromString(match.group(1)!),
+      actionParam: match.group(2),
+    );
   }
+}
+
+// ─── Internal Helper Classes ─────────────────────────────────────────────────
+
+/// Accumulates streaming tool call chunks.
+class _ToolCallBuilder {
+  String? id;
+  String? type;
+  String? name;
+  final StringBuffer argumentsBuffer = StringBuffer();
+}
+
+/// Result of streaming a session response.
+class _StreamResult {
+  _StreamResult({required this.textBuffer, required this.toolCalls});
+  final StringBuffer textBuffer;
+  final Map<int, _ToolCallBuilder> toolCalls;
+}
+
+/// Result of invoking a tool handler.
+class _ToolResult {
+  _ToolResult({
+    required this.id,
+    required this.name,
+    required this.handlerResult,
+    required this.toolResultContent,
+  });
+  final String? id;
+  final String name;
+  final String handlerResult;
+  final LlamaToolResultContent toolResultContent;
+}
+
+/// Parsed action marker from a handler result string.
+class _ActionParsed {
+  _ActionParsed({required this.action, required this.actionParam});
+  final AppAction? action;
+  final String? actionParam;
 }
 
 // ─── Data Classes ─────────────────────────────────────────────────────────────

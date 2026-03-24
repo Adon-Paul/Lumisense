@@ -9,8 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Manages downloading, caching, and lifecycle of on-device GGUF model files.
 ///
 /// Models are stored in the app's documents directory (persistent across
-/// restarts, cleared only on uninstall). Downloads are resumable and report
-/// progress via a [ValueNotifier].
+/// restarts, cleared only on uninstall). Downloads are resumable via HTTP
+/// Range headers and report progress via a [ValueNotifier].
 class ModelManager {
   ModelManager({required SharedPreferences prefs}) : _prefs = prefs;
 
@@ -65,16 +65,6 @@ class ModelManager {
   /// Active cancel tokens for in-flight downloads.
   final Map<OnDeviceModel, CancelToken> _cancelTokens = {};
 
-  // ─── Prefs Keys ─────────────────────────────────────────────────────────────
-
-  static const String _kUseOnDevice = 'useOnDeviceModels';
-
-  bool get useOnDeviceModels => _prefs.getBool(_kUseOnDevice) ?? false;
-
-  Future<void> setUseOnDeviceModels(bool value) async {
-    await _prefs.setBool(_kUseOnDevice, value);
-  }
-
   // ─── Paths ──────────────────────────────────────────────────────────────────
 
   Future<String> get _modelsDir async {
@@ -125,9 +115,31 @@ class ModelManager {
     return total;
   }
 
+  // ─── Disk Space Check ─────────────────────────────────────────────────────
+
+  /// Returns available disk space in MB, or -1 if unable to determine.
+  Future<int> availableDiskSpaceMB() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final stat = await FileStat.stat(dir.path);
+      // FileStat doesn't provide free space; use a heuristic approach:
+      // try writing to check, or just return -1 (unknown).
+      // On Android, we can check via platform-specific code, but for now
+      // we do a basic check by looking at the storage directory.
+      if (stat.type == FileSystemEntityType.directory) {
+        // Can't get free space from Dart alone — return -1 to signal unknown.
+        return -1;
+      }
+      return -1;
+    } catch (_) {
+      return -1;
+    }
+  }
+
   // ─── Download ───────────────────────────────────────────────────────────────
 
-  /// Downloads model files with progress reporting. Resumes partial downloads.
+  /// Downloads model files with progress reporting. Resumes partial downloads
+  /// using HTTP Range headers.
   Future<void> downloadModel(OnDeviceModel model) async {
     final info = models[model]!;
     final dir = Directory(await _modelsDir);
@@ -137,13 +149,13 @@ class ModelManager {
     _cancelTokens[model] = cancelToken;
 
     try {
-      // Calculate total bytes to download for combined progress.
+      // Calculate total parts for combined progress.
       final int totalParts = info.projectorUrl != null ? 2 : 1;
       int completedParts = 0;
 
       // Download main model
       downloadProgress[model]!.value = 0.0;
-      await _downloadFile(
+      await _downloadFileResumable(
         url: info.modelUrl,
         savePath: await modelPath(model),
         cancelToken: cancelToken,
@@ -156,7 +168,7 @@ class ModelManager {
 
       // Download projector if needed
       if (info.projectorUrl != null) {
-        await _downloadFile(
+        await _downloadFileResumable(
           url: info.projectorUrl!,
           savePath: (await projectorPath(model))!,
           cancelToken: cancelToken,
@@ -172,7 +184,7 @@ class ModelManager {
       downloadProgress[model]!.value = null;
       if (e.type == DioExceptionType.cancel) {
         debugPrint('Download cancelled for ${info.displayName}');
-        // Clean up partial files
+        // Clean up partial files on cancel
         await _deleteFile(await modelPath(model));
         if (info.projectorFileName != null) {
           await _deleteFile((await projectorPath(model))!);
@@ -199,23 +211,96 @@ class ModelManager {
 
   // ─── Internal ───────────────────────────────────────────────────────────────
 
-  Future<void> _downloadFile({
+  /// Downloads a file with resume support via HTTP Range headers.
+  ///
+  /// If a partial file exists at [savePath], sends a Range header to resume
+  /// from where it left off. Falls back to full download on 416 (range not
+  /// satisfiable) or if the server doesn't support ranges.
+  Future<void> _downloadFileResumable({
     required String url,
     required String savePath,
     required CancelToken cancelToken,
     required void Function(double progress) onProgress,
   }) async {
+    final partialFile = File(savePath);
+    int existingBytes = 0;
+
+    if (partialFile.existsSync()) {
+      existingBytes = partialFile.lengthSync();
+    }
+
+    // First, try a HEAD request to get total size
+    int totalBytes = 0;
+    try {
+      final headResponse = await _dio.head<void>(
+        url,
+        options: Options(
+          followRedirects: true,
+          maxRedirects: 5,
+          receiveTimeout: const Duration(seconds: 30),
+        ),
+        cancelToken: cancelToken,
+      );
+      final contentLength = headResponse.headers.value('content-length');
+      if (contentLength != null) {
+        totalBytes = int.tryParse(contentLength) ?? 0;
+      }
+    } catch (_) {
+      // HEAD failed — proceed without knowing total size
+    }
+
+    // If file already complete, skip download
+    if (totalBytes > 0 && existingBytes >= totalBytes) {
+      onProgress(1.0);
+      return;
+    }
+
+    // Try resumable download if we have partial data
+    if (existingBytes > 0 && totalBytes > 0) {
+      try {
+        await _dio.download(
+          url,
+          savePath,
+          cancelToken: cancelToken,
+          deleteOnError: false,
+          options: Options(
+            followRedirects: true,
+            maxRedirects: 5,
+            receiveTimeout: const Duration(minutes: 30),
+            headers: {'Range': 'bytes=$existingBytes-'},
+          ),
+          onReceiveProgress: (received, total) {
+            final totalReceived = existingBytes + received;
+            if (totalBytes > 0) {
+              onProgress(totalReceived / totalBytes);
+            } else if (total > 0) {
+              onProgress(totalReceived / (existingBytes + total));
+            }
+          },
+        );
+        return;
+      } on DioException catch (e) {
+        if (e.type == DioExceptionType.cancel) rethrow;
+        // 416 Range Not Satisfiable or server doesn't support ranges
+        // Fall through to full download
+        debugPrint('Resume failed (${e.response?.statusCode}), '
+            'restarting download from scratch');
+        if (partialFile.existsSync()) await partialFile.delete();
+      }
+    }
+
+    // Full download (no resume)
     await _dio.download(
       url,
       savePath,
       cancelToken: cancelToken,
+      deleteOnError: false,
       onReceiveProgress: (received, total) {
         if (total > 0) {
           onProgress(received / total);
         }
       },
       options: Options(
-        // Follow redirects (HuggingFace uses CDN redirects)
         followRedirects: true,
         maxRedirects: 5,
         receiveTimeout: const Duration(minutes: 30),

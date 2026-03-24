@@ -1,619 +1,238 @@
-# LumiSense Development Setup Guide
+# LumiSense Setup Guide
 
-This guide will help you set up the development environment for the LumiSense project, including all necessary tools, dependencies, and configurations for the three-tier architecture.
+## Who This Guide Is For
 
-## Table of Contents
+For non-technical readers:
 
-1. [Prerequisites](#prerequisites)
-2. [Flutter Mobile App Setup](#flutter-mobile-app-setup)
-3. [ESP32 Hardware Development Setup](#esp32-hardware-development-setup)
-4. [Google Cloud Platform Setup](#google-cloud-platform-setup)
-5. [Development Workflow](#development-workflow)
-6. [Testing & Debugging](#testing--debugging)
-7. [Troubleshooting](#troubleshooting)
+- This guide helps you run LumiSense on an Android phone for demo and testing.
 
-## Prerequisites
+For technical readers:
 
-### System Requirements
+- This is the canonical setup path for local development in the current codebase.
+- It focuses on the app under [lumisense](.), not historical hardware or external backend stacks.
 
-**Operating System:**
-- Windows 10/11 (Primary development environment)
-- macOS 10.14+ (For iOS development)
-- Linux Ubuntu 18.04+ (Alternative)
+## 1. Environment Prerequisites
 
-**Hardware Requirements:**
-- RAM: 8GB minimum, 16GB recommended
-- Storage: 50GB free space
-- USB ports for ESP32 development
-- Android device or iOS device for testing
+## 1.1 Required software
 
-### Required Accounts
+1. Flutter SDK (stable channel)
+2. Android Studio with Android SDK
+3. JDK 17
+4. Git
 
-1. **Google Account** - For GCP services and Firebase
-2. **GitHub Account** - For version control and collaboration
-3. **Razorpay Account** - For payment integration (testing)
+Optional but useful:
 
-## Flutter Mobile App Setup
+1. VS Code with Flutter and Dart extensions
 
-### 1. Install Flutter SDK
+## 1.2 Required hardware
 
-**Windows:**
-```powershell
-# Download Flutter SDK
-Invoke-WebRequest -Uri "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_stable.zip" -OutFile "flutter_windows_stable.zip"
+1. Android phone or Android emulator
+2. Enough free storage for app plus optional local model downloads
 
-# Extract to C:\flutter
-Expand-Archive flutter_windows_stable.zip C:\
+## 1.3 Verify your toolchain
 
-# Add to PATH
-[Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\flutter\bin", "User")
-```
-
-**macOS/Linux:**
-```bash
-# Download and extract Flutter
-git clone https://github.com/flutter/flutter.git -b stable
-export PATH="$PATH:`pwd`/flutter/bin"
-
-# Add to shell profile
-echo 'export PATH="$PATH:[PATH_TO_FLUTTER_GIT_DIRECTORY]/flutter/bin"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-### 2. Verify Flutter Installation
+Run:
 
 ```bash
 flutter doctor
 ```
 
-Expected output should show no critical issues. Install any missing dependencies as suggested.
+Resolve blocking issues before continuing.
 
-### 3. Configure IDEs
+## 2. Get and Run the App
 
-**VS Code (Recommended):**
-```bash
-# Install Flutter and Dart extensions
-code --install-extension Dart-Code.flutter
-code --install-extension Dart-Code.dart-code
-```
-
-**Android Studio:**
-- Install Flutter and Dart plugins
-- Configure Android SDK (API level 21+)
-- Set up Android Virtual Device (AVD)
-
-### 4. Project Dependencies
-
-Navigate to the project directory and install dependencies:
+From the repository root:
 
 ```bash
 cd lumisense
 flutter pub get
-```
-
-### 5. Platform-Specific Setup
-
-**Android:**
-- Install Android Studio
-- Accept Android licenses: `flutter doctor --android-licenses`
-- Connect Android device or start emulator
-
-**iOS (macOS only):**
-- Install Xcode from App Store
-- Install CocoaPods: `sudo gem install cocoapods`
-- Run: `cd ios && pod install`
-
-## ESP32 Hardware Development Setup
-
-### 1. Install PlatformIO
-
-**VS Code Extension:**
-```bash
-code --install-extension platformio.platformio-ide
-```
-
-**Standalone CLI:**
-```bash
-# Windows (using pip)
-pip install platformio
-
-# macOS (using Homebrew)
-brew install platformio
-
-# Linux (using pip)
-pip3 install platformio
-```
-
-### 2. Hardware Requirements
-
-**ESP32 Development Board:**
-- ESP32-WROVER-E or ESP32-CAM module
-- USB-to-Serial programmer (if not built-in)
-- Breadboard and jumper wires
-- 5MP camera module (OV5640 recommended)
-
-**Connections:**
-```
-ESP32-CAM Pinout:
-- VCC: 5V
-- GND: Ground
-- U0T: GPIO1 (TX)
-- U0R: GPIO3 (RX)
-- GPIO0: Programming mode (connect to GND during upload)
-```
-
-### 3. PlatformIO Project Configuration
-
-Create `platformio.ini` in the hardware directory:
-
-```ini
-[env:esp32cam]
-platform = espressif32
-board = esp32cam
-framework = arduino
-monitor_speed = 115200
-upload_speed = 921600
-
-lib_deps = 
-    esp32-camera
-    WiFi
-    BluetoothSerial
-    ArduinoJson
-
-build_flags = 
-    -DCORE_DEBUG_LEVEL=3
-    -DBOARD_HAS_PSRAM
-
-monitor_filters = esp32_exception_decoder
-```
-
-### 4. Test Hardware Setup
-
-```cpp
-// test_camera.cpp
-#include "esp_camera.h"
-#include "WiFi.h"
-
-void setup() {
-    Serial.begin(115200);
-    
-    // Initialize camera
-    camera_config_t config;
-    config.ledc_channel = LEDC_CHANNEL_0;
-    config.ledc_timer = LEDC_TIMER_0;
-    config.pin_d0 = 5;
-    config.pin_d1 = 18;
-    // ... additional pin configurations
-    
-    if (esp_camera_init(&config) != ESP_OK) {
-        Serial.println("Camera init failed");
-        return;
-    }
-    
-    Serial.println("Camera initialized successfully");
-}
-
-void loop() {
-    camera_fb_t * fb = esp_camera_fb_get();
-    if (fb) {
-        Serial.printf("Image size: %d bytes\n", fb->len);
-        esp_camera_fb_return(fb);
-    }
-    delay(1000);
-}
-```
-
-## Google Cloud Platform Setup
-
-### 1. Create GCP Project
-
-```bash
-# Install Google Cloud CLI
-# Windows: Download from https://cloud.google.com/sdk/docs/install
-# macOS: brew install google-cloud-sdk
-# Linux: Follow official documentation
-
-# Initialize gcloud
-gcloud init
-
-# Create new project
-gcloud projects create lumisense-project --name="LumiSense"
-
-# Set project as default
-gcloud config set project lumisense-project
-```
-
-### 2. Enable Required APIs
-
-```bash
-# Enable necessary APIs
-gcloud services enable cloudfunctions.googleapis.com
-gcloud services enable firestore.googleapis.com
-gcloud services enable vision.googleapis.com
-gcloud services enable storage.googleapis.com
-gcloud services enable apigateway.googleapis.com
-```
-
-### 3. Set Up Firebase
-
-```bash
-# Install Firebase CLI
-npm install -g firebase-tools
-
-# Login to Firebase
-firebase login
-
-# Initialize Firebase in project
-firebase init
-
-# Select:
-# - Firestore
-# - Functions
-# - Storage
-# - Hosting (optional)
-```
-
-### 4. Create Service Account
-
-```bash
-# Create service account
-gcloud iam service-accounts create lumisense-service \
-    --display-name="LumiSense Service Account"
-
-# Generate key file
-gcloud iam service-accounts keys create credentials.json \
-    --iam-account=lumisense-service@lumisense-project.iam.gserviceaccount.com
-
-# Set environment variable
-export GOOGLE_APPLICATION_CREDENTIALS="./credentials.json"
-```
-
-### 5. Deploy Cloud Functions
-
-Create `functions/main.py`:
-
-```python
-import functions_framework
-from google.cloud import firestore
-from google.cloud import vision
-
-@functions_framework.http
-def analyze_scene(request):
-    """HTTP Cloud Function for scene analysis"""
-    
-    # Enable CORS
-    if request.method == 'OPTIONS':
-        headers = {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Max-Age': '3600'
-        }
-        return ('', 204, headers)
-    
-    # Process scene analysis request
-    try:
-        request_json = request.get_json()
-        image_data = request_json.get('image')
-        user_id = request_json.get('user_id')
-        
-        # Initialize services
-        vision_client = vision.ImageAnnotatorClient()
-        db = firestore.Client()
-        
-        # Perform analysis
-        # ... implementation details
-        
-        return {'status': 'success', 'analysis': 'Scene analysis result'}
-        
-    except Exception as e:
-        return {'status': 'error', 'message': str(e)}, 500
-```
-
-Deploy function:
-```bash
-cd functions
-gcloud functions deploy analyze-scene \
-    --runtime python39 \
-    --trigger-http \
-    --allow-unauthenticated
-```
-
-## Development Workflow
-
-### 1. Project Structure
-
-```
-lumisense/
-├── lib/                    # Flutter app source
-│   ├── main.dart
-│   ├── models/
-│   ├── services/
-│   ├── providers/
-│   ├── screens/
-│   └── widgets/
-├── hardware/               # ESP32 firmware
-│   ├── src/
-│   ├── lib/
-│   └── platformio.ini
-├── cloud/                  # GCP functions
-│   ├── functions/
-│   ├── firestore.rules
-│   └── firebase.json
-├── docs/                   # Documentation
-├── test/                   # Flutter tests
-└── integration_test/       # E2E tests
-```
-
-### 2. Version Control
-
-```bash
-# Clone repository
-git clone https://github.com/Adon-Paul/Lumisense.git
-cd Lumisense
-
-# Create feature branch
-git checkout -b feature/obstacle-detection
-
-# Make changes and commit
-git add .
-git commit -m "feat: implement obstacle detection algorithm"
-
-# Push to remote
-git push origin feature/obstacle-detection
-
-# Create pull request on GitHub
-```
-
-### 3. Development Commands
-
-**Flutter App:**
-```bash
-# Run app in debug mode
 flutter run
+```
 
-# Run on specific device
+If multiple devices are connected:
+
+```bash
+flutter devices
 flutter run -d <device-id>
+```
 
-# Build for release
-flutter build apk --release
+## 3. Android Configuration Notes
 
-# Run tests
-flutter test
+Current Android configuration is defined in:
 
-# Analyze code
+1. [android/app/build.gradle.kts](android/app/build.gradle.kts)
+2. [android/app/src/main/AndroidManifest.xml](android/app/src/main/AndroidManifest.xml)
+
+Important runtime points:
+
+1. minSdk is 24
+2. Camera, microphone, location, contacts, SMS, and internet permissions are used by feature paths
+
+## 4. Initial App Onboarding
+
+When the app first launches:
+
+1. Complete onboarding fields
+2. Add emergency contact
+3. Add API keys you plan to use
+
+Core settings screen is [lib/screens/settings_screen.dart](lib/screens/settings_screen.dart), backed by [lib/providers/settings_provider.dart](lib/providers/settings_provider.dart).
+
+## 5. API Keys and External Services
+
+For non-technical readers:
+
+- Some features work without keys.
+- Some features need keys to call online services.
+
+For technical readers:
+
+Configure keys through the in-app Settings UI.
+
+## 5.1 Key types used by current implementation
+
+1. Gemini API key
+2. OpenRouter API key (fallback)
+3. Groq API key (fallback)
+4. Ollama server URL (local network/server fallback)
+5. OpenRouteService API key (walking directions)
+6. OpenWeatherMap API key (weather)
+
+Service handling references:
+
+1. [lib/services/gemini_service.dart](lib/services/gemini_service.dart)
+2. [lib/services/directions_service.dart](lib/services/directions_service.dart)
+3. [lib/services/weather_service.dart](lib/services/weather_service.dart)
+
+## 5.2 Features that can run without cloud keys
+
+1. OCR text reading
+2. Brightness detection
+3. Face and pose detection
+4. QR parsing (payment app launch still depends on installed UPI app)
+5. Some on-device model workflows after model download
+
+## 6. On-Device Model Setup
+
+For non-technical readers:
+
+- If you enable on-device AI, the app can run more tasks locally.
+- First-time model download can take significant time and storage.
+
+For technical readers:
+
+Model lifecycle is managed by [lib/services/model_manager.dart](lib/services/model_manager.dart) and toggled in [lib/screens/settings_screen.dart](lib/screens/settings_screen.dart).
+
+## 6.1 Download flow
+
+1. Open Settings
+2. Go to On-Device AI Models
+3. Download required models
+4. Enable On-Device AI switch
+
+## 6.2 Runtime behavior
+
+1. Models are cached locally
+2. Loading is performed on demand
+3. Services can unload models to reduce memory pressure
+
+Main on-device services:
+
+1. [lib/services/on_device_vision_service.dart](lib/services/on_device_vision_service.dart)
+2. [lib/services/on_device_assistant_service.dart](lib/services/on_device_assistant_service.dart)
+3. [lib/services/on_device_orchestrator.dart](lib/services/on_device_orchestrator.dart)
+
+## 7. Recommended Validation Checklist
+
+After setup, verify these flows manually:
+
+1. Read Text in camera screen
+2. Identify objects in camera screen
+3. Describe scene with configured cloud key
+4. Weather with weather key
+5. Navigate to a destination with ORS key
+6. SOS test with a safe test contact
+7. QR scan test using a test UPI code
+
+## 8. Developer Validation Commands
+
+Use these routine commands during development:
+
+```bash
+flutter pub get
 flutter analyze
+flutter test
 ```
 
-**ESP32 Firmware:**
-```bash
-# Build firmware
-pio run
+Note:
 
-# Upload to device
-pio run --target upload
+1. Analyze and test are safe for validation.
+2. Build commands are optional and only needed when packaging artifacts.
 
-# Monitor serial output
-pio device monitor
+## 9. Troubleshooting
 
-# Clean build
-pio run --target clean
-```
+## 9.1 Camera does not start
 
-**Cloud Functions:**
-```bash
-# Deploy all functions
-firebase deploy --only functions
+Check:
 
-# Deploy specific function
-firebase deploy --only functions:analyzeScene
+1. Camera permission granted in system settings
+2. No other app is holding camera
+3. Manifest includes camera permission in [android/app/src/main/AndroidManifest.xml](android/app/src/main/AndroidManifest.xml)
 
-# View logs
-firebase functions:log
-```
+## 9.2 Voice commands not triggering
 
-## Testing & Debugging
+Check:
 
-### 1. Flutter App Testing
+1. Microphone permission granted
+2. STT listening indicator in camera screen
+3. Phrase clarity and command wording
+4. Command mapping logic in [lib/services/stt_service.dart](lib/services/stt_service.dart)
 
-**Unit Tests:**
-```dart
-// test/services/ocr_service_test.dart
-import 'package:flutter_test/flutter_test.dart';
-import 'package:lumisense/services/ocr_service.dart';
+## 9.3 Scene description fails
 
-void main() {
-  group('OCR Service Tests', () {
-    test('should extract text from image', () async {
-      final ocrService = OCRService();
-      final result = await ocrService.extractText(testImageBytes);
-      expect(result, contains('expected text'));
-    });
-  });
-}
-```
+Check:
 
-**Widget Tests:**
-```dart
-// test/widgets/status_indicator_test.dart
-import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:lumisense/widgets/status_indicator.dart';
+1. At least one provider key configured
+2. Network connectivity for cloud mode
+3. On-device models downloaded and enabled for local mode
+4. Error output from provider fallback behavior in [lib/services/gemini_service.dart](lib/services/gemini_service.dart)
 
-void main() {
-  testWidgets('StatusIndicator displays correct status', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: StatusIndicator(status: DeviceStatus.connected),
-      ),
-    );
-    
-    expect(find.text('Connected'), findsOneWidget);
-  });
-}
-```
+## 9.4 Directions fail to start
 
-### 2. Hardware Testing
+Check:
 
-**Serial Monitor Setup:**
-```cpp
-// Add debug output to firmware
-void debugPrint(String message) {
-  Serial.print("[DEBUG] ");
-  Serial.print(millis());
-  Serial.print(": ");
-  Serial.println(message);
-}
-```
+1. OpenRouteService key is set
+2. Location permission is granted
+3. GPS is enabled on device
+4. Destination phrase is specific enough
 
-**Camera Test Procedure:**
-1. Upload test firmware
-2. Monitor serial output
-3. Verify camera initialization
-4. Check image capture functionality
-5. Test Wi-Fi connectivity
+## 9.5 SOS flow does not complete
 
-### 3. Cloud Function Testing
+Check:
 
-**Local Testing:**
-```bash
-# Install Functions Framework
-pip install functions-framework
+1. Emergency contact is configured
+2. Location permission is granted
+3. SMS or dial intent is available on device
+4. SOS logic in [lib/services/sos_service.dart](lib/services/sos_service.dart)
 
-# Run function locally
-functions-framework --target=analyze_scene --debug
-```
+## 9.6 On-device models fail to run
 
-**Unit Tests:**
-```python
-# test_functions.py
-import pytest
-from unittest.mock import Mock
-from main import analyze_scene
+Check:
 
-def test_analyze_scene():
-    # Mock request object
-    request = Mock()
-    request.get_json.return_value = {
-        'image': 'base64_image_data',
-        'user_id': 'test_user'
-    }
-    
-    # Test function
-    result = analyze_scene(request)
-    assert result['status'] == 'success'
-```
+1. Model download completed in Settings
+2. Enough free storage and RAM
+3. On-device mode enabled
+4. Service load path in [lib/services/on_device_orchestrator.dart](lib/services/on_device_orchestrator.dart)
 
-## Troubleshooting
+## 10. Development Workflow Notes
 
-### Common Flutter Issues
+1. Keep implementation changes and doc changes together.
+2. Treat code behavior as source of truth.
+3. Update [README.md](README.md), [FEATURES.md](FEATURES.md), and [ARCHITECTURE.md](ARCHITECTURE.md) when setup assumptions change.
 
-**Issue: Flutter doctor shows Android license issues**
-```bash
-# Solution: Accept Android licenses
-flutter doctor --android-licenses
-```
+## 11. Reference Index
 
-**Issue: iOS build fails**
-```bash
-# Solution: Clean and rebuild
-cd ios
-rm -rf Pods Podfile.lock
-pod install
-cd ..
-flutter clean
-flutter build ios
-```
-
-### Common ESP32 Issues
-
-**Issue: Upload failed**
-- Ensure GPIO0 is connected to GND during upload
-- Check USB cable connection
-- Verify correct board selection in PlatformIO
-
-**Issue: Camera initialization failed**
-- Check camera module connections
-- Verify power supply (5V for ESP32-CAM)
-- Test with known working camera module
-
-### Common Cloud Issues
-
-**Issue: Functions deployment fails**
-```bash
-# Check quotas and permissions
-gcloud auth list
-gcloud projects get-iam-policy lumisense-project
-```
-
-**Issue: Firestore permission denied**
-- Check security rules
-- Verify authentication token
-- Test with Firebase emulator
-
-### Performance Optimization
-
-**Flutter App:**
-- Use `const` constructors for widgets
-- Implement lazy loading for lists
-- Optimize image loading and caching
-- Profile with `flutter run --profile`
-
-**ESP32 Firmware:**
-- Optimize camera settings for performance
-- Implement efficient power management
-- Use appropriate task priorities in FreeRTOS
-
-**Cloud Functions:**
-- Minimize cold starts with warm-up requests
-- Optimize memory allocation
-- Use connection pooling for database connections
-
-## Environment Variables
-
-Create `.env` files for different environments:
-
-**Flutter (.env):**
-```
-FIREBASE_PROJECT_ID=lumisense-project
-RAZORPAY_KEY_ID=your_razorpay_key
-OPENWEATHER_API_KEY=your_openweather_key
-DEBUG_MODE=true
-```
-
-**Cloud Functions (.env):**
-```
-GOOGLE_CLOUD_PROJECT=lumisense-project
-FIRESTORE_EMULATOR_HOST=localhost:8080
-VISION_API_ENDPOINT=https://vision.googleapis.com/v1
-```
-
-## Continuous Integration
-
-Set up GitHub Actions for automated testing:
-
-```yaml
-# .github/workflows/flutter.yml
-name: Flutter CI
-
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.0.0'
-    - run: flutter pub get
-    - run: flutter test
-    - run: flutter analyze
-    - run: flutter build apk --debug
-```
-
-This setup guide provides a comprehensive foundation for developing the LumiSense project across all three tiers of the architecture. Follow the sections relevant to your role in the development team.
+1. App overview: [README.md](README.md)
+2. Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+3. Feature behavior: [FEATURES.md](FEATURES.md)
+4. Master specification: [PROJECT_SPEC.md](PROJECT_SPEC.md)

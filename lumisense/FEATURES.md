@@ -1,499 +1,363 @@
-# LumiSense Features Documentation
-
-This document provides a comprehensive breakdown of all LumiSense features organized into seven functional tiers, from essential safety features to advanced wellness capabilities.
-
-## Feature Tier Overview
-
-| Tier | Focus Area | Priority | Implementation Status |
-|------|------------|----------|----------------------|
-| **Tier 1** | Essential Navigation & Safety | Critical | Planned for MVP |
-| **Tier 2** | Information & Object Interaction | High | Core Features |
-| **Tier 3** | Advanced Scene Understanding | High | AI-Powered |
-| **Tier 4** | Integrated Services & Connectivity | Medium | Platform Integration |
-| **Tier 5** | User Experience & System Management | Medium | UX Enhancement |
-| **Tier 6** | Proactive Assistance & Personalization | Low | Smart Features |
-| **Tier 7** | Health & Wellness | Low | Specialized Module |
-
----
-
-## Tier 1: Essential Navigational & Safety Features
-
-### 1.1 Real-Time Obstacle Detection
-**Purpose:** Identify and alert users to obstacles in their path
-**Technology:** On-device computer vision with TensorFlow Lite
-**Implementation:**
-- Continuous camera feed analysis
-- Object detection model optimized for mobility obstacles
-- Audio alerts with directional guidance ("obstacle ahead left")
-- Adjustable sensitivity settings
-
-**User Experience:**
-- Immediate audio feedback: "Stop, obstacle 2 meters ahead"
-- Haptic patterns for different obstacle types
-- Learning system that adapts to user's walking speed
-
-### 1.2 Drop-Off & Curb Detection
-**Purpose:** Prevent falls from unexpected elevation changes
-**Technology:** Depth estimation and edge detection algorithms
-**Implementation:**
-- Stereoscopic depth analysis using single camera + AI
-- Ground plane analysis for elevation changes
-- Real-time processing with <200ms latency
-
-**User Experience:**
-- Urgent audio alerts: "Caution, drop-off detected"
-- Strong haptic feedback pattern
-- Integration with GPS for known problematic areas
-
-### 1.3 Path Quality Assessment
-**Purpose:** Evaluate surface conditions and recommend optimal routes
-**Technology:** Computer vision + crowdsourced data
-**Implementation:**
-- Surface texture analysis (smooth, rough, uneven)
-- Weather impact assessment
-- Community-contributed path ratings
-
-**User Experience:**
-- Proactive suggestions: "Smoother path available 10 meters to your right"
-- Integration with navigation apps
-- Personal preference learning
-
-### 1.4 Head-Level Obstacle Warning
-**Purpose:** Detect overhanging obstacles and low-hanging branches
-**Technology:** Upper field-of-view analysis
-**Implementation:**
-- Dedicated scanning of upper camera field
-- Height estimation relative to user
-- Integration with user height profile
-
-**User Experience:**
-- Early warning: "Low branch ahead, duck in 3 steps"
-- Different audio tone from ground obstacles
-- Distance-based alert intensity
-
-### 1.5 Ambient Light Detection
-**Purpose:** Inform users about lighting conditions for safety and social awareness
-**Technology:** Camera sensor light level analysis
-**Implementation:**
-- Real-time luminance measurement
-- Transition detection (entering/exiting buildings)
-- Time-of-day correlation
-
-**User Experience:**
-- Environment awareness: "You're entering a dimly lit area"
-- Flash/illumination recommendations
-- Social context awareness for photography
-
----
-
-## Tier 2: Information & Object Interaction
-
-### 2.1 Instant Text Reader (OCR)
-**Purpose:** Convert visual text to audio for immediate comprehension
-**Technology:** Optimized OCR with TensorFlow Lite
-**Implementation:**
-- Real-time text detection and recognition
-- Multiple language support (English, Hindi, local languages)
-- Document structure understanding (headings, paragraphs)
-
-**User Experience:**
-- Voice command activation: "Read this"
-- Continuous reading mode for documents
-- Spell-out mode for important details
-
-**Technical Details:**
-```dart
-class OCRService {
-  Future<String> processText(Uint8List imageData) async {
-    // Preprocess image for optimal OCR
-    var preprocessed = enhanceForOCR(imageData);
-    
-    // Run TensorFlow Lite OCR model
-    var detectedText = await runOCRInference(preprocessed);
-    
-    // Post-process and structure text
-    return formatTextForAudio(detectedText);
-  }
-}
-```
-
-### 2.2 Power Reading Mode
-**Purpose:** Enhanced text reading for documents and books
-**Technology:** Advanced OCR with layout analysis
-**Implementation:**
-- Page structure recognition
-- Reading order optimization
-- Bookmark and resume functionality
-
-**User Experience:**
-- Continuous document reading
-- Navigation commands: "Next paragraph", "Go to chapter 3"
-- Reading speed adjustment
-- Bookmark management
-
-### 2.3 Object Identification
-**Purpose:** Identify and describe objects in the environment
-**Technology:** General object detection model
-**Implementation:**
-- 1000+ object categories
-- Confidence scoring
-- Contextual descriptions
-
-**User Experience:**
-- Point and ask functionality
-- Detailed descriptions: "Red apple on wooden table"
-- Shopping assistance
-- Learning mode for new objects
-
-### 2.4 "Find My Stuff" Mode (Personalized Object Recognition)
-**Purpose:** Locate personal items using custom recognition
-**Technology:** Personalized ML models
-**Implementation:**
-- User-trained object recognition
-- Visual search functionality
-- Location memory system
-
-**User Experience:**
-- Training mode: "This is my phone"
-- Search command: "Find my keys"
-- Last seen location tracking
-- Custom naming for objects
-
-### 2.5 Live Language Translator
-**Purpose:** Real-time translation of text and speech
-**Technology:** Google Translate API integration
-**Implementation:**
-- Camera-based text translation
-- Audio input translation
-- Offline capability for common phrases
-
-**User Experience:**
-- Instant sign translation
-- Conversation assistance
-- Language learning support
-- Cultural context provided
-
----
-
-## Tier 3: Advanced Scene & Social Understanding
-
-### 3.1 Conversational Scene Description (via Cloud VLM)
-**Purpose:** Provide rich, context-aware descriptions of complex scenes
-**Technology:** Cloud-based Vision-Language Models
-**Implementation:**
-- GPT-Vision or similar VLM integration
-- Context-aware descriptions
-- Question-answering about scenes
-
-**User Experience:**
-- Natural conversation: "What's happening in this room?"
-- Follow-up questions: "How many people are here?"
-- Detailed spatial descriptions
-- Activity recognition
-
-**Technical Architecture:**
-```python
-# Cloud Function Implementation
-def analyze_complex_scene(image_data, user_context):
-    # Use Vision-Language Model
-    vlm_response = vlm_client.analyze_image(
-        image=image_data,
-        prompt=f"Describe this scene for a visually impaired person. Context: {user_context}",
-        max_tokens=150
-    )
-    
-    return {
-        'description': vlm_response.text,
-        'confidence': vlm_response.confidence,
-        'elements': extract_key_elements(vlm_response)
-    }
-```
-
-### 3.2 Personalized Facial Recognition (Opt-in)
-**Purpose:** Recognize family, friends, and frequently encountered people
-**Technology:** Facial recognition with privacy controls
-**Implementation:**
-- Local facial encoding storage
-- Opt-in consent system
-- Privacy-first design
-
-**User Experience:**
-- Recognition alerts: "Sarah is approaching from your left"
-- Training mode for new contacts
-- Privacy controls and data management
-- Social context awareness
-
-### 3.3 Discreet Mode (Haptics-only for social situations)
-**Purpose:** Provide assistance without drawing attention
-**Technology:** Advanced haptic feedback patterns
-**Implementation:**
-- Rich haptic vocabulary
-- Context-aware mode switching
-- Silent operation
-
-**User Experience:**
-- Automatic activation in quiet environments
-- Complex haptic patterns for different information
-- Manual mode switching
-- Emergency audio override
-
----
-
-## Tier 4: Integrated Services & Connectivity
-
-### 4.1 Smart UPI Payments (via Razorpay API)
-**Purpose:** Enable independent digital payments
-**Technology:** Razorpay API integration with QR code scanning
-**Implementation:**
-- QR code detection and verification
-- Amount confirmation system
-- Transaction history tracking
-
-**User Experience:**
-- QR code identification: "Payment QR code detected"
-- Voice confirmation: "Pay ₹150 to ABC Store?"
-- Transaction completion feedback
-- Spending tracking
-
-### 4.2 Ride-Sharing Assistant
-**Purpose:** Book and manage ride-sharing services
-**Technology:** Ola/Uber API integration
-**Implementation:**
-- Location-aware booking
-- Driver tracking and communication
-- Fare estimation and payment
-
-**User Experience:**
-- Voice booking: "Book a ride to office"
-- Real-time updates: "Driver is 3 minutes away"
-- Automatic ride sharing with caregivers
-- Safety features and emergency contacts
-
-### 4.3 Public Transit Navigator
-**Purpose:** Navigate public transportation systems
-**Technology:** Transit API integration + real-time data
-**Implementation:**
-- Route planning and optimization
-- Real-time arrival information
-- Accessibility-focused routing
-
-**User Experience:**
-- Route guidance: "Take bus 42 from stop B"
-- Real-time updates: "Your bus is delayed by 5 minutes"
-- Platform and seat guidance
-- Transfer instructions
-
-### 4.4 Enhanced SOS & Emergency Response Mechanism
-**Purpose:** Provide comprehensive emergency assistance
-**Technology:** Multi-channel emergency system
-**Implementation:**
-- One-touch emergency activation
-- Automatic fall detection
-- GPS location sharing
-- Multi-tier response system
-
-**User Experience:**
-- Immediate emergency activation
-- Automatic caregiver notification
-- Location sharing with emergency services
-- False alarm prevention
-
-### 4.5 Caregiver Connect (Remote View & Assistance)
-**Purpose:** Enable family/caregiver remote assistance
-**Technology:** Secure video streaming + communication
-**Implementation:**
-- Encrypted video sharing
-- Remote scene description
-- Two-way communication
-
-**User Experience:**
-- Caregiver can see what user sees
-- Remote guidance and assistance
-- Privacy controls and permissions
-- Emergency escalation
-
----
-
-## Tier 5: User Experience & System Management
-
-### 5.1 Training & Gamification Module
-**Purpose:** Help users learn system features through engaging training
-**Technology:** Interactive tutorials with progress tracking
-**Implementation:**
-- Guided feature tutorials
-- Skill assessment and progress tracking
-- Achievement system
-
-**User Experience:**
-- Interactive onboarding
-- Skill-building exercises
-- Progress rewards and recognition
-- Adaptive difficulty adjustment
-
-### 5.2 Smart Power Management (with Deep Sleep Mode)
-**Purpose:** Optimize battery life through intelligent power management
-**Technology:** Machine learning-based usage prediction
-**Implementation:**
-- Usage pattern analysis
-- Predictive feature pre-loading
-- Automatic sleep mode activation
-
-**User Experience:**
-- All-day battery life
-- Intelligent feature availability
-- Low power notifications
-- Charging optimization
-
-### 5.3 Dirty Lens & Obstruction Warning
-**Purpose:** Ensure optimal camera performance
-**Technology:** Image quality analysis
-**Implementation:**
-- Real-time image quality monitoring
-- Obstruction detection algorithms
-- Cleaning reminders
-
-**User Experience:**
-- Automatic quality warnings
-- Cleaning instructions
-- Performance impact notifications
-- Maintenance reminders
-
----
-
-## Tier 6: Proactive Assistance & Personalization
-
-### 6.1 Google Calendar Integration
-**Purpose:** Provide context-aware assistance based on scheduled events
-**Technology:** Google Calendar API with smart notifications
-**Implementation:**
-- Calendar event parsing
-- Location-based reminders
-- Travel time calculation
-
-**User Experience:**
-- Proactive reminders: "Meeting in 30 minutes, shall I book a ride?"
-- Route optimization for appointments
-- Preparation assistance
-- Schedule-aware feature prioritization
-
-### 6.2 Google Fit Integration
-**Purpose:** Monitor health metrics and provide wellness insights
-**Technology:** Google Fit API with health data analysis
-**Implementation:**
-- Activity tracking and analysis
-- Health goal monitoring
-- Emergency health alerts
-
-**User Experience:**
-- Activity encouragement: "You've walked 5000 steps today"
-- Health goal progress updates
-- Unusual pattern alerts
-- Exercise and mobility recommendations
-
-### 6.3 Proactive Weather Alerts
-**Purpose:** Provide weather-aware assistance and recommendations
-**Technology:** OpenWeatherMap API with location services
-**Implementation:**
-- Real-time weather monitoring
-- Condition-specific recommendations
-- Route adjustment suggestions
-
-**User Experience:**
-- Weather-appropriate clothing suggestions
-- Route modifications for weather
-- Safety alerts for severe conditions
-- Seasonal assistance adjustments
-
----
-
-## Tier 7: Health & Wellness
-
-### 7.1 Comprehensive Medication Manager
-**Purpose:** Ensure proper medication adherence and safety
-**Technology:** OCR + medication database + scheduling system
-**Implementation:**
-- Medication identification via packaging
-- Dosage and schedule tracking
-- Interaction and allergy warnings
-
-**User Experience:**
-- Medication identification: "This is your morning blood pressure medication"
-- Scheduled reminders with dosage information
-- Interaction warnings and safety checks
-- Caregiver medication oversight
-
-**Technical Implementation:**
-```dart
-class MedicationManager {
-  Future<MedicationInfo> identifyMedication(Uint8List packageImage) async {
-    // OCR to read package text
-    String packageText = await ocrService.extractText(packageImage);
-    
-    // Match against medication database
-    MedicationInfo medInfo = await medicationDB.lookup(packageText);
-    
-    // Check user allergies and interactions
-    List<String> warnings = await checkInteractions(medInfo, userProfile.medications);
-    
-    return medInfo.copyWith(warnings: warnings);
-  }
-  
-  void scheduleReminder(MedicationInfo medication) {
-    // Set up notification schedules
-    notificationService.scheduleRecurring(
-      medication.schedule,
-      "Time for ${medication.name} - ${medication.dosage}"
-    );
-  }
-}
-```
-
----
-
-## Implementation Priority Matrix
-
-### Phase 1 (MVP - Months 1-3)
-- **Tier 1:** Real-time obstacle detection, drop-off detection
-- **Tier 2:** Instant text reader, basic object identification
-- **Tier 5:** Basic power management, training module
-
-### Phase 2 (Core Features - Months 4-6)
-- **Tier 1:** Complete Tier 1 features
-- **Tier 2:** Complete Tier 2 features
-- **Tier 3:** Conversational scene description
-- **Tier 4:** UPI payments, basic emergency response
-
-### Phase 3 (Advanced Features - Months 7-8)
-- **Tier 3:** Complete Tier 3 features
-- **Tier 4:** Complete Tier 4 features
-- **Tier 6:** Calendar and Fit integration
-
-### Phase 4 (Future Enhancements)
-- **Tier 7:** Comprehensive medication manager
-- **Tier 6:** Advanced proactive features
-- Performance optimizations and user feedback integration
-
----
-
-## Success Metrics
-
-### Tier 1 Success Metrics
-- **Safety:** 95% obstacle detection accuracy
-- **Latency:** <200ms response time
-- **User Satisfaction:** 90%+ safety confidence rating
-
-### Tier 2 Success Metrics
-- **OCR Accuracy:** 98%+ for clear text
-- **Object Recognition:** 85%+ accuracy for common objects
-- **User Productivity:** 50% reduction in assistance requests
-
-### Tier 3 Success Metrics
-- **Scene Understanding:** 90%+ relevance in descriptions
-- **Social Integration:** 80% user comfort in social situations
-
-### Tier 4 Success Metrics
-- **Payment Success:** 99.5%+ transaction completion rate
-- **Transportation:** 90% successful trip completion
-- **Emergency Response:** <30 second response time
-
-This comprehensive feature set positions LumiSense as a complete life assistance platform rather than just a navigation tool, providing value across multiple aspects of daily living for visually impaired users.
+# LumiSense Features
+
+## How to Read This Document
+
+This file is intentionally written for two audiences.
+
+For non-technical readers:
+
+- Each feature starts with what it does and why it matters.
+
+For technical readers:
+
+- The same feature then maps to concrete screens and service paths in code.
+
+## Feature Status Matrix
+
+## Implemented and actively usable
+
+1. OCR text reading
+2. Object identification
+3. Scene description
+4. Real-time navigation mode announcements
+5. Turn-by-turn walking directions
+6. Voice command routing
+7. QR scanning and UPI launch
+8. Currency identification
+9. Brightness check
+10. Weather check
+11. People detection (face and pose)
+12. SOS emergency flow
+13. History logging and replay
+14. Settings and key management
+15. Caregiver dashboard support actions
+
+## Partial or still being refined
+
+1. On-device assistant action orchestration
+2. Contact voice-calling reliability for ambiguous names
+3. Real-time walking behavior tuning across devices
+
+## Planned but not implemented as product-ready features
+
+1. Medication management workflows
+2. Gamification and training programs
+3. Calendar and fitness integrations
+4. Broader predictive proactive routines
+
+## Core Camera Features
+
+## 1. Read Text (OCR)
+
+What users get:
+
+- Point to text, tap Read, hear spoken output.
+
+Why it exists:
+
+- Fast access to labels, signs, notes, and packaging.
+
+Technical implementation:
+
+- Trigger path: [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart)
+- OCR engine: [lib/services/ocr_service.dart](lib/services/ocr_service.dart)
+- Result model: [lib/models/ocr_result.dart](lib/models/ocr_result.dart)
+- Speech output: [lib/services/tts_service.dart](lib/services/tts_service.dart)
+- History persistence: [lib/providers/history_provider.dart](lib/providers/history_provider.dart)
+
+Behavior notes:
+
+- Reading order is sorted for practical narration.
+- Power-read chunking is available from settings.
+
+## 2. Identify Objects
+
+What users get:
+
+- Quick spoken object labels from camera view.
+
+Why it exists:
+
+- Situational awareness for nearby objects.
+
+Technical implementation:
+
+- Camera and detection routing: [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart)
+- Real-time plugin path: ultralytics_yolo integration in [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart)
+- Overlay rendering: [lib/widgets/bounding_box_overlay.dart](lib/widgets/bounding_box_overlay.dart)
+
+Behavior notes:
+
+- Single-shot identify action uses the latest available detections with confidence filtering.
+
+## 3. Describe Scene
+
+What users get:
+
+- A concise spoken summary of the scene in front of them.
+
+Why it exists:
+
+- Gives context beyond raw object names.
+
+Technical implementation:
+
+- Orchestration path: [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart)
+- Cloud provider chain: [lib/services/gemini_service.dart](lib/services/gemini_service.dart)
+- On-device route: [lib/services/on_device_orchestrator.dart](lib/services/on_device_orchestrator.dart)
+
+Behavior notes:
+
+- Cooldown is applied to prevent excessive repeated requests.
+- Falls back across providers when configured.
+
+## 4. Real-Time Navigation Mode
+
+What users get:
+
+- Continuous spoken awareness while moving, including object presence and relative positioning.
+
+Why it exists:
+
+- Reduces repeated manual requests while walking.
+
+Technical implementation:
+
+- Navigation trigger and lifecycle: [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart)
+- Announcement policy and persistence logic: [lib/services/navigation_mode_controller.dart](lib/services/navigation_mode_controller.dart)
+- Overlay: [lib/widgets/bounding_box_overlay.dart](lib/widgets/bounding_box_overlay.dart)
+
+Behavior notes:
+
+- Persistence threshold avoids announcing unstable detections.
+- Cooldowns and summaries reduce cognitive overload.
+
+## Mobility and Route Features
+
+## 5. Turn-by-Turn Walking Directions
+
+What users get:
+
+- Spoken walking instructions, repeat/status controls, and optional route map view.
+
+Why it exists:
+
+- Enables destination guidance within the same interaction model as camera features.
+
+Technical implementation:
+
+- Core engine: [lib/services/directions_service.dart](lib/services/directions_service.dart)
+- Panel controls: [lib/widgets/directions_panel.dart](lib/widgets/directions_panel.dart)
+- Map screen: [lib/screens/route_map_screen.dart](lib/screens/route_map_screen.dart)
+
+Behavior notes:
+
+- Includes reroute logic and step progression tracking.
+
+## Voice and Accessibility Features
+
+## 6. Voice Commands
+
+What users get:
+
+- Speak commands instead of tapping controls.
+
+Why it exists:
+
+- Faster hands-free operation for frequent actions.
+
+Technical implementation:
+
+- Command mapping and extraction: [lib/services/stt_service.dart](lib/services/stt_service.dart)
+- Command dispatch and action execution: [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart)
+
+Behavior notes:
+
+- Supports task commands plus navigation-status commands.
+- Phrase precedence is good but still under refinement for edge phrasing.
+
+## 7. Spoken Feedback and Chunked Narration
+
+What users get:
+
+- Consistent voice output for results, status, and guidance.
+
+Why it exists:
+
+- Voice output is the primary user feedback path.
+
+Technical implementation:
+
+- Speech singleton, queue controls, urgent speech, and cancellation hooks: [lib/services/tts_service.dart](lib/services/tts_service.dart)
+- Power-read setting integration: [lib/providers/settings_provider.dart](lib/providers/settings_provider.dart)
+
+## Utility and Daily-Living Features
+
+## 8. QR Payment Scan and UPI Launch
+
+What users get:
+
+- Scan payment QR and open compatible payment app.
+
+Why it exists:
+
+- Supports independent digital transaction flow with spoken verification.
+
+Technical implementation:
+
+- QR parse service: [lib/services/qr_scanner_service.dart](lib/services/qr_scanner_service.dart)
+- UPI model parse: [lib/models/upi_payment_info.dart](lib/models/upi_payment_info.dart)
+- Launch integration: [lib/services/upi_payment_service.dart](lib/services/upi_payment_service.dart)
+
+## 9. Currency Identification
+
+What users get:
+
+- Spoken denomination result from camera image.
+
+Why it exists:
+
+- Fast confidence check for cash handling.
+
+Technical implementation:
+
+- Cloud route: [lib/services/currency_detector_service.dart](lib/services/currency_detector_service.dart)
+- On-device route support through orchestrator path in [lib/services/on_device_orchestrator.dart](lib/services/on_device_orchestrator.dart)
+
+## 10. Brightness Check
+
+What users get:
+
+- Spoken estimate of scene brightness and practical context.
+
+Why it exists:
+
+- Helps determine lighting conditions for safer movement and better camera usage.
+
+Technical implementation:
+
+- Brightness analysis service: [lib/services/brightness_detector_service.dart](lib/services/brightness_detector_service.dart)
+
+## 11. Weather Check
+
+What users get:
+
+- Spoken current weather and safety-relevant weather context.
+
+Why it exists:
+
+- Helps with route and outing decisions.
+
+Technical implementation:
+
+- Service path: [lib/services/weather_service.dart](lib/services/weather_service.dart)
+- Trigger path: [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart)
+
+## 12. People Detection
+
+What users get:
+
+- Spoken awareness of faces and posture cues.
+
+Why it exists:
+
+- Improves social and nearby-presence awareness.
+
+Technical implementation:
+
+- Face path: [lib/services/face_detection_service.dart](lib/services/face_detection_service.dart)
+- Pose path: [lib/services/pose_detection_service.dart](lib/services/pose_detection_service.dart)
+- Combined action handling in [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart)
+
+## Safety and Care Features
+
+## 13. SOS Emergency Flow
+
+What users get:
+
+- Rapid emergency flow with location-aware messaging and fallback behavior.
+
+Why it exists:
+
+- Safety-critical assistance path when immediate help is needed.
+
+Technical implementation:
+
+- Core SOS logic: [lib/services/sos_service.dart](lib/services/sos_service.dart)
+- Trigger points: [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart), [lib/screens/home_screen.dart](lib/screens/home_screen.dart), [lib/screens/caregiver_dashboard.dart](lib/screens/caregiver_dashboard.dart)
+
+## 14. Caregiver Dashboard Actions
+
+What users get:
+
+- Visibility into activity and quick call/message/location actions.
+
+Why it exists:
+
+- Supports assisted usage scenarios without changing the core user workflow.
+
+Technical implementation:
+
+- Screen and tabs: [lib/screens/caregiver_dashboard.dart](lib/screens/caregiver_dashboard.dart)
+
+## Platform Features
+
+## 15. Settings and Configuration
+
+What users get:
+
+- Control over speech behavior, emergency contact, model mode, and provider keys.
+
+Why it exists:
+
+- Keeps the app adaptable to user preference and environment.
+
+Technical implementation:
+
+- Settings state and secure storage integration: [lib/providers/settings_provider.dart](lib/providers/settings_provider.dart)
+- Settings UI and model download cards: [lib/screens/settings_screen.dart](lib/screens/settings_screen.dart)
+
+## 16. History and Replay
+
+What users get:
+
+- View and replay recent outputs.
+
+Why it exists:
+
+- Supports confirmation and recall without re-running perception.
+
+Technical implementation:
+
+- Provider and model: [lib/providers/history_provider.dart](lib/providers/history_provider.dart), [lib/models/history_entry.dart](lib/models/history_entry.dart)
+- UI: [lib/screens/history_screen.dart](lib/screens/history_screen.dart)
+
+## Feature-Level Dependencies and Permissions
+
+Not every feature requires the same resources. Key dependencies and permission paths are reflected in:
+
+- Package dependencies: [pubspec.yaml](pubspec.yaml)
+- Android permission and intent declarations: [android/app/src/main/AndroidManifest.xml](android/app/src/main/AndroidManifest.xml)
+
+Commonly used runtime capabilities:
+
+1. Camera
+2. Microphone
+3. Location
+4. SMS intent
+5. Contacts
+6. Internet
+
+## Limitations and Active Work Areas
+
+1. Feature breadth is high, but automated test depth is still limited.
+2. Device performance differences significantly affect real-time behavior.
+3. Voice command phrase ambiguity still exists for some overlapping phrasing.
+4. Some forward-looking ideas previously discussed in project planning docs are not yet shipped features and should not be treated as current product behavior.
+
+## Source of Truth Policy
+
+This features document is aligned to the current codebase. If a mismatch is found:
+
+1. Treat code behavior as ground truth.
+2. Update this file and related docs to match runtime reality.

@@ -1,126 +1,168 @@
-# LumiSense 🌟
+# LumiSense
 
-**A Proactive AI Co-Pilot for the Visually Impaired**
+LumiSense is a software-only Flutter app that helps blind and low-vision users understand their surroundings using a phone camera, voice input, and spoken feedback.
 
-LumiSense is an innovative AI-powered navigation and assistance system designed specifically for the visually impaired community. Unlike reactive systems that only respond to commands, LumiSense proactively anticipates user needs and provides intelligent assistance throughout daily activities.
+This repository represents the current working demo implementation. It does not require external wearable hardware.
 
-## 🎯 Vision
+## What This App Does
 
-To develop a proactive AI co-pilot for the visually impaired that is affordable, scalable, and deeply integrated with the user's life and the Indian digital ecosystem.
+In plain terms, LumiSense tries to answer the questions a visually impaired user asks dozens of times per day:
 
-## ✨ Key Features
+- What is in front of me?
+- Can you read this text?
+- Is this a payment QR code?
+- Is this note 100 or 500 rupees?
+- Who is near me?
+- What is the weather like right now?
+- Can you guide me to a place?
 
-### Tier 1: Essential Navigation & Safety
-- Real-time obstacle detection and path quality assessment
-- Drop-off & curb detection with head-level obstacle warnings
-- Ambient light detection for optimal guidance
+Technically, it combines on-device computer vision, optional on-device language models, and cloud AI fallbacks. It is built around an accessibility-first interaction model with large touch targets, speech output, and voice commands.
 
-### Tier 2: Information & Object Interaction  
-- Instant text reader with advanced OCR capabilities
-- Intelligent object identification and personalized recognition
-- Live language translation for multilingual support
+## Current Implementation Status
 
-### Tier 3: Advanced Scene Understanding
-- Conversational scene descriptions via cloud Vision-Language Models
-- Personalized facial recognition (opt-in) for social interactions
-- Discreet haptic-only mode for sensitive situations
+The table below describes what exists in code today.
 
-### Tier 4: Integrated Services
-- Smart UPI payments integration (Razorpay API)
-- Ride-sharing assistant for Ola/Uber bookings
-- Public transit navigation with real-time updates
-- Enhanced SOS & emergency response with caregiver connectivity
+### Implemented and usable
 
-### Tier 5: User Experience
-- Gamified training modules for skill development
-- Smart power management with deep sleep optimization
-- Intelligent lens obstruction detection and warnings
+- Camera-based OCR text reading with speech output
+- Real-time object detection overlay and smart navigation announcements
+- Scene description using cloud AI with provider fallback chain
+- On-device model stack for local scene understanding and assistant flows
+- Voice commands for core actions
+- SOS flow with GPS-based emergency SMS handoff
+- QR scanning and UPI payment intent launch
+- Currency identification from camera frame
+- Face and pose detection for people awareness
+- Brightness and weather checks
+- Turn-by-turn walking directions with map and spoken steps
+- History log and replay
+- Settings for TTS, API keys, emergency contact, and on-device mode toggle
 
-### Tier 6: Proactive Intelligence
-- Google Calendar integration for schedule awareness
-- Google Fit integration for health monitoring
-- Proactive weather alerts and recommendations
+### Partial or evolving
 
-### Tier 7: Health & Wellness
-- Comprehensive medication management system
+- On-device assistant tool-calling workflows are implemented but still under active hardening
+- Contact calling by voice works but depends on contact naming quality and permissions
+- Some advanced navigation behaviors are still being tuned for real-world walking variability
 
-## 🏗️ Technical Architecture
+### Planned, not implemented as production features
 
-LumiSense uses a sophisticated three-tier distributed architecture:
+- Gamification and training modules
+- Calendar and fitness integrations
+- Medication management workflows
+- Broader proactive life-assistant automation
 
-### Edge Layer (Wearable Hardware)
-- **SoC**: ESP32-WROVER-E with 8MB PSRAM
-- **Camera**: OV5640 5MP sensor
-- **Communication**: Wi-Fi MJPEG streaming + Bluetooth Low Energy
-- **Firmware**: C++ with PlatformIO
+## Architecture Snapshot
 
-### Hub Layer (Mobile Application)
-- **Framework**: Flutter with Dart
-- **AI Processing**: TensorFlow Lite for on-device inference
-- **Role**: Primary processing "brain" and secure cloud gateway
+For non-technical readers: the phone does almost everything.
 
-### Cloud Layer (Backend Services)
-- **Platform**: Google Cloud Platform (GCP)
-- **Architecture**: Serverless with Cloud Functions
-- **Language**: Python
-- **Database**: Cloud Firestore
-- **APIs**: Google Maps, Calendar, Fit, Razorpay, OpenWeatherMap
+- The app sees through the camera
+- Runs AI locally when possible
+- Uses cloud AI when needed
+- Speaks results immediately
 
-## 🚀 Getting Started
+For technical readers, the high-level flow is:
 
-### Prerequisites
-- Flutter SDK (latest stable version)
-- Android Studio / VS Code with Flutter extensions
-- Git for version control
+```text
+Camera Frame -> Flutter UI + Services -> AI Execution Layer -> TTS Output
 
-### Installation
+AI Execution Layer:
+- On-device CV: ML Kit OCR, face, pose, barcode
+- On-device detection: ultralytics_yolo plugin (YOLO)
+- On-device LLM/VLM: llama.cpp via llamadart and GGUF models
+- Cloud fallback: Gemini -> OpenRouter -> Groq -> Ollama
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Adon-Paul/Lumisense.git
-   cd lumisense
-   ```
+Key service entry points:
 
-2. **Install dependencies**
-   ```bash
-   flutter pub get
-   ```
+- App bootstrap: [lib/main.dart](lib/main.dart)
+- Main interaction hub: [lib/screens/camera_screen.dart](lib/screens/camera_screen.dart)
+- Cloud multi-provider vision: [lib/services/gemini_service.dart](lib/services/gemini_service.dart)
+- On-device orchestration: [lib/services/on_device_orchestrator.dart](lib/services/on_device_orchestrator.dart)
+- Model download/cache: [lib/services/model_manager.dart](lib/services/model_manager.dart)
+- Navigation logic: [lib/services/directions_service.dart](lib/services/directions_service.dart)
 
-3. **Run the application**
-   ```bash
-   flutter run
-   ```
+## Core User Flow
 
-For detailed setup instructions, see [SETUP.md](SETUP.md).
+For non-technical readers:
 
-## 📚 Documentation
+1. Open the app
+2. Go to camera
+3. Tap a task button or speak a command
+4. Hear the result
 
-- [Project Specification](PROJECT_SPEC.md) - Complete system specification and master context
-- [Technical Architecture](ARCHITECTURE.md) - Detailed technical design and implementation
-- [Features Documentation](FEATURES.md) - Comprehensive feature breakdown
-- [Development Setup](SETUP.md) - Environment setup and development guidelines
+Technical screen flow:
 
-## 🤝 Contributing
+```text
+Splash -> Onboarding -> Home -> Camera
+                         |-> History
+                         |-> Settings
+                         |-> Caregiver Dashboard
 
-This is a Final Year Project developed by a 5-person team:
-- Team Lead & AI Specialist
-- Mobile Application Developer  
-- Hardware & IoT Specialist
-- Cloud & Backend Developer
-- Project Manager & QA Lead
+Camera actions:
+- Read
+- Identify
+- Describe
+- Navigate
+- Pay (QR)
+- Currency
+- Light
+- Weather
+- People
+- Voice command trigger
+```
 
-## 🌍 Impact & Vision
+## Tech Stack
 
-LumiSense aims to bridge the accessibility gap in the Indian digital ecosystem by:
-- Providing affordable, smartphone-centric architecture
-- Deep integration with local services (UPI, Ola/Uber, public transit)
-- Building a comprehensive support network for users and caregivers
-- Focusing on proactive assistance rather than reactive responses
+Primary stack from [pubspec.yaml](pubspec.yaml):
 
-## 📄 License
+- Flutter and Dart
+- Provider state management
+- flutter_tts and speech_to_text
+- google_mlkit_text_recognition
+- google_mlkit_barcode_scanning
+- google_mlkit_face_detection
+- google_mlkit_pose_detection
+- ultralytics_yolo
+- llamadart
+- dio for large model download management
+- geolocator and url_launcher
+- open_route_service and flutter_map
 
-This project is part of a Final Year academic project. All rights reserved.
+Android runtime configuration:
 
-## 📞 Contact
+- minSdk 24
+- compileSdk 36
+- targetSdk 36
 
-For questions or collaboration opportunities, please reach out through the project repository.
+See [android/app/build.gradle.kts](android/app/build.gradle.kts) and [android/app/src/main/AndroidManifest.xml](android/app/src/main/AndroidManifest.xml).
+
+## Quick Start
+
+1. Install Flutter SDK and Android toolchain.
+2. From [lumisense](.), install dependencies.
+3. Run the app on Android.
+
+```bash
+flutter pub get
+flutter run
+```
+
+For setup detail and environment requirements, use [SETUP.md](SETUP.md).
+
+## Known Constraints
+
+- On-device model downloads are large and can take time on slower networks.
+- Some features require API keys and permissions to be configured in Settings.
+- Real-time camera AI behavior can vary by device performance and thermal limits.
+- The project is optimized for Android-first demo use.
+
+## Documentation Map
+
+- Feature catalog: [FEATURES.md](FEATURES.md)
+- Technical architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Project scope and context: [PROJECT_SPEC.md](PROJECT_SPEC.md)
+- Environment setup: [SETUP.md](SETUP.md)
+
+## Scope Note
+
+This repository is maintained as a final-year project demo codebase with active iteration. Documentation is being continuously aligned to implementation reality.

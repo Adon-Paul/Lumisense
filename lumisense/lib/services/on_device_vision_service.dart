@@ -21,13 +21,16 @@ class OnDeviceVisionService {
   final ModelManager _modelManager;
 
   LlamaEngine? _engine;
-  bool _isLoading = false;
   bool _isReady = false;
+  bool _cancelled = false;
+
+  /// Cached loading future to prevent concurrent loadModel() races.
+  Future<bool>? _loadFuture;
 
   DateTime lastCallTime = DateTime(2000);
 
   bool get isReady => _isReady;
-  bool get isLoading => _isLoading;
+  bool get isLoading => _loadFuture != null;
 
   // ─── Prompts ────────────────────────────────────────────────────────────────
 
@@ -47,10 +50,13 @@ class OnDeviceVisionService {
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
-  /// Loads the SmolVLM2 model into memory. Call once before using.
-  Future<bool> loadModel() async {
+  /// Loads the SmolVLM2 model into memory. Safe to call concurrently —
+  /// only one load operation runs at a time.
+  Future<bool> loadModel() =>
+      _loadFuture ??= _doLoadModel().whenComplete(() => _loadFuture = null);
+
+  Future<bool> _doLoadModel() async {
     if (_isReady) return true;
-    if (_isLoading) return false;
 
     final ready =
         await _modelManager.isModelReady(OnDeviceModel.smolvlm2Vision);
@@ -59,7 +65,6 @@ class OnDeviceVisionService {
       return false;
     }
 
-    _isLoading = true;
     try {
       final mPath =
           await _modelManager.modelPath(OnDeviceModel.smolvlm2Vision);
@@ -82,18 +87,23 @@ class OnDeviceVisionService {
       _engine = null;
       _isReady = false;
       return false;
-    } finally {
-      _isLoading = false;
     }
   }
 
   /// Unloads the model to free RAM.
   Future<void> unload() async {
+    _cancelled = true;
     if (_engine != null) {
       await _engine!.dispose();
       _engine = null;
     }
     _isReady = false;
+    _cancelled = false;
+  }
+
+  /// Cancels any in-progress inference.
+  void cancelInference() {
+    _cancelled = true;
   }
 
   // ─── Public API (matches GeminiService interface) ───────────────────────────
@@ -132,6 +142,8 @@ class OnDeviceVisionService {
       );
     }
 
+    _cancelled = false;
+
     try {
       // Save image to temp file for llamadart
       final tempDir = await getTemporaryDirectory();
@@ -140,7 +152,7 @@ class OnDeviceVisionService {
       await tempFile.writeAsBytes(jpegBytes);
 
       try {
-        // Create chat session with vision
+        // Create a fresh session per inference to avoid KV cache accumulation
         final session = ChatSession(
           _engine!,
           systemPrompt:
@@ -153,8 +165,13 @@ class OnDeviceVisionService {
           LlamaImageContent(path: tempFile.path),
           LlamaTextContent(prompt),
         ])) {
+          if (_cancelled) break;
           final content = chunk.choices.first.delta.content;
           if (content != null) buffer.write(content);
+        }
+
+        if (_cancelled) {
+          throw const OnDeviceModelException('Inference cancelled.');
         }
 
         final result = buffer.toString().trim();

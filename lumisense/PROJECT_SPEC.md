@@ -1,149 +1,204 @@
-# Project LumiSense - Master Context & System Specification
+# LumiSense Project Specification
 
-**Document Version:** 1.0  
-**Date Compiled:** August 2, 2025  
-**Project Status:** Final Year Project Proposal (Zeroth Review Stage)  
-**Core Vision:** To develop a proactive AI co-pilot for the visually impaired that is affordable, scalable, and deeply integrated with the user's life and the Indian digital ecosystem.
+Document version: 2.0  
+Status: Current-state master specification  
+Date: 2026-03-25
 
-## Section 1: Core Philosophy & Unique Value Proposition
+## 1. Project Definition
 
-### 1.1. Project Name: LumiSense
+For non-technical readers:
 
-### 1.2. Core Concept
-A hybrid AI system that uses a simple, low-cost wearable camera module, leverages the user's smartphone as the primary processing "brain," and connects to a cloud backend for complex tasks. Feedback is delivered through audio and haptics.
+LumiSense is a smartphone app that helps blind and low-vision users understand their surroundings through camera-based AI and spoken guidance. The app is designed to reduce dependency in everyday tasks like reading text, identifying objects, navigating, and sending emergency alerts.
 
-### 1.3. Unique Differentiators (vs. OrCam, etc.)
+For technical readers:
 
-**Proactive, Not Reactive:** Integrates with personal data (Calendar, Health) to anticipate user needs, rather than just describing what it sees on command.
+LumiSense is an Android-first Flutter system with a hybrid inference model:
 
-**Software-First & Affordable:** The "smartphone-centric" architecture drastically reduces hardware costs, making it accessible. The platform's intelligence is in the software, allowing for continuous updates.
+1. On-device perception and model execution where practical
+2. Cloud provider fallback for richer scene interpretation and resilience
 
-**Deeply Localized (India Focus):** Built to integrate with the Indian digital ecosystem, including UPI payments (Razorpay), local ride-sharing (Ola/Uber), and public transit.
+The implementation root is [lib](lib), with app setup in [main.dart](lib/main.dart).
 
-**Complete Support Network:** Features like "Caregiver Connect" extend the system's benefits to the user's family, providing a shared safety net.
+## 2. Product Intent and Positioning
 
-## Section 2: Final Feature Set (Version 2.3)
+## 2.1 Core intent
 
-### Tier 1: Essential Navigational & Safety Features
-- **1.1:** Real-Time Obstacle Detection
-- **1.2:** Drop-Off & Curb Detection
-- **1.3:** Path Quality Assessment
-- **1.4:** Head-Level Obstacle Warning
-- **1.5:** Ambient Light Detection
+1. Deliver immediate, speech-first situational assistance.
+2. Keep interaction low-friction with large controls and voice commands.
+3. Support both offline-capable local workflows and online-enhanced workflows.
 
-### Tier 2: Information & Object Interaction
-- **2.1:** Instant Text Reader (OCR)
-- **2.2:** Power Reading Mode
-- **2.3:** Object Identification
-- **2.4:** "Find My Stuff" Mode (Personalized Object Recognition)
-- **2.5:** Live Language Translator
+## 2.2 User profile
 
-### Tier 3: Advanced Scene & Social Understanding
-- **3.1:** Conversational Scene Description (via Cloud VLM)
-- **3.2:** Personalized Facial Recognition (Opt-in)
-- **3.3:** Discreet Mode (Haptics-only for social situations)
+Primary:
 
-### Tier 4: Integrated Services & Connectivity
-- **4.1:** Smart UPI Payments (via Razorpay API)
-- **4.2:** Ride-Sharing Assistant
-- **4.3:** Public Transit Navigator
-- **4.4:** Enhanced SOS & Emergency Response Mechanism
-- **4.5:** Caregiver Connect (Remote View & Assistance)
+1. Blind and low-vision users who need practical daily assistance.
 
-### Tier 5: User Experience & System Management
-- **5.1:** Training & Gamification Module
-- **5.2:** Smart Power Management (with Deep Sleep Mode)
-- **5.3:** Dirty Lens & Obstruction Warning
+Secondary:
 
-### Tier 6: Proactive Assistance & Personalization
-- **6.1:** Google Calendar Integration
-- **6.2:** Google Fit Integration
-- **6.3:** Proactive Weather Alerts
+1. Caregivers who monitor status and help remotely when needed.
 
-### Tier 7: Health & Wellness
-- **7.1:** Comprehensive Medication Manager
+## 2.3 Success criteria for this version
 
-## Section 3: Detailed Technical Architecture & Stack
+1. Core camera actions are stable and understandable by voice output.
+2. Safety-critical SOS flow is reachable quickly and behaves predictably.
+3. Navigation and perception features are usable on real devices with variable performance.
 
-### 3.1. System Architecture
-A three-tier distributed model: Edge (Wearable), Hub (Smartphone), and Cloud (Backend).
+## 3. Current Implementation Scope
 
-### 3.2. Wearable Hardware Module ("The Edge")
-- **SoC:** ESP32-WROVER-E (with 8MB PSRAM)
-- **Camera:** OV5640 5MP sensor
-- **Firmware Language:** C++ (in PlatformIO)
-- **Communication:** Streams video via a local Wi-Fi MJPEG server; receives commands and sends status via Bluetooth Low Energy (BLE).
+This section is the authoritative scope for what is implemented now.
 
-### 3.3. Mobile Application ("The Hub")
-- **Framework:** Flutter
-- **Language:** Dart
-- **On-Device AI:** TensorFlow Lite
-- **Function:** Acts as the primary "brain," running all real-time AI models, managing the UI, and serving as a secure gateway to the cloud.
+## 3.1 Implemented capabilities
 
-### 3.4. Cloud Backend
-- **Provider:** Google Cloud Platform (GCP)
-- **Architecture:** Serverless (Cloud Functions)
-- **Language:** Python
-- **Database:** Cloud Firestore (NoSQL)
-- **Function:** Hosts large Vision-Language Models for complex, non-real-time analysis and manages all user data. Operates within the free tier for project scale.
+1. OCR read-aloud
+2. Single-shot object identification
+3. Scene description
+4. Real-time navigation mode announcements
+5. Turn-by-turn walking directions
+6. Voice command mapping and action dispatch
+7. QR scan and UPI handoff
+8. Currency identification
+9. Brightness analysis
+10. Weather status narration
+11. People awareness via face and pose detection
+12. Emergency SOS flow with GPS-aware messaging path
+13. Caregiver dashboard actions
+14. History logging and replay
+15. Settings for keys, speech behavior, emergency contact, and model mode
 
-### 3.5. API Integrations
-- **Internal:** A REST API built with GCP API Gateway.
-- **External:** Google APIs (Maps, Calendar, Fit), Razorpay (for UPI), OpenWeatherMap.
+## 3.2 Partial or in-progress capabilities
 
-## Section 4: Project Plan & Scope (Final Year Project)
+1. On-device assistant action orchestration hardening
+2. Voice command disambiguation in overlapping phrase cases
+3. Device-level runtime tuning for heavy real-time workloads
 
-### 4.1. Project Goal
-To build a robust proof-of-concept that validates the core architecture.
+## 3.3 Out-of-scope for current release
 
-### 4.2. Team Structure
-A 5-person team with defined roles:
-- Team Lead & AI Specialist
-- Mobile Application Developer
-- Hardware & IoT Specialist
-- Cloud & Backend Developer
-- Project Manager & QA Lead
+1. Production-grade medication management
+2. Full calendar and health ecosystem integrations
+3. Gamification and adaptive training curriculum
+4. Dedicated external edge hardware runtime dependency
 
-### 4.3. Key Deliverables
-- A functional ESP32-CAM based wearable prototype.
-- A polished Flutter mobile application.
-- Two perfected on-device AI modules: Instant Text Reader (OCR) and General Object Recognition.
-- One functional cloud endpoint to demonstrate the hybrid architecture.
+## 4. Architecture Specification
 
-### 4.4. Project Timeline (Gantt Chart Summary)
-An 8-month plan divided into four phases:
+For non-technical readers:
 
-- **Phase 1 (Months 1-2):** Research & Design
-- **Phase 2 (Months 3-5):** Core Module Development
-- **Phase 3 (Months 6-7):** Integration & Testing
-- **Phase 4 (Month 8):** Finalization & Delivery
+The phone is the main runtime unit. It captures camera input, runs AI services, and speaks results.
 
-## Section 5: Budget & Cost Analysis (Prototype Stage)
+For technical readers:
 
-### 5.1. Hardware Cost
-Estimated at ~₹4,000 per prototype. A budget of ₹8,000 is recommended for the team to build two units. This equates to a manageable ₹1,600 per team member.
+### 4.1 Runtime pipeline
 
-### 5.2. Software & Services Cost
-₹0. This is achieved by using open-source software (Flutter, TensorFlow) and by operating entirely within the generous free tiers of cloud platforms like GCP. Billing alerts must be set up as a mandatory safety measure.
+```text
+Camera/Sensors -> Flutter Screen and Service Layer -> Inference and Decision Layer -> TTS and UX Feedback
+```
 
-## Section 6: Startup Potential & Strategy (Post-Project)
+### 4.2 Inference and decision layer
 
-### 6.1. Potential
-The concept has very high potential due to the massive, underserved market and a strong, recurring revenue model. However, the risk is also extremely high.
+1. ML Kit paths for OCR, barcode, face, pose
+2. ultralytics_yolo path for real-time object detections
+3. On-device LLM and VLM path via llama.cpp through llamadart
+4. Cloud fallback chain for scene description and related tasks
 
-### 6.2. Key Risks
-The "Hardware Trap" (manufacturing is difficult), competition from free apps (Microsoft Seeing AI), and a complex go-to-market strategy.
+### 4.3 Main implementation anchors
 
-### 6.3. Strategic Path Forward
+1. Camera orchestration: [screens/camera_screen.dart](lib/screens/camera_screen.dart)
+2. Cloud fallback chain: [services/gemini_service.dart](lib/services/gemini_service.dart)
+3. On-device model orchestration: [services/on_device_orchestrator.dart](lib/services/on_device_orchestrator.dart)
+4. Model lifecycle and downloads: [services/model_manager.dart](lib/services/model_manager.dart)
+5. Navigation route engine: [services/directions_service.dart](lib/services/directions_service.dart)
 
-**Launch an App First:** Do not start with hardware. Launch a software-only "LumiSense AI" app.
+Detailed architecture coverage is documented in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-**Dominate a Niche:** Focus initially on solving one critical problem brilliantly. The strongest starting niche is the combination of the Medication Manager (Tier 7) and Caregiver Connect (Tier 4.5).
+## 5. State, Data, and Storage
 
-**Build a Community:** Work directly with the visually impaired community in India from day one. Their trust and feedback are the most valuable assets.
+## 5.1 Runtime state
 
-**Introduce Hardware Later:** Once the software has proven its value and has a loyal user base, introduce a low-cost wearable as an optional, premium accessory.
+1. App mode and processing state are maintained by [providers/app_state.dart](lib/providers/app_state.dart).
+2. User settings and API key state are managed by [providers/settings_provider.dart](lib/providers/settings_provider.dart).
+3. User action history is managed by [providers/history_provider.dart](lib/providers/history_provider.dart).
 
----
+## 5.2 Persisted data
 
-*This document contains a complete, refined, and structured summary of the LumiSense project. It serves as the master context for understanding the project in its entirety.*
+1. Preferences and history use SharedPreferences serialization paths.
+2. Sensitive keys use secure storage integration through settings provider logic.
+
+## 5.3 Data models
+
+1. History entries: [models/history_entry.dart](lib/models/history_entry.dart)
+2. OCR results: [models/ocr_result.dart](lib/models/ocr_result.dart)
+3. UPI payload parsing: [models/upi_payment_info.dart](lib/models/upi_payment_info.dart)
+
+## 6. Platform and Dependency Specification
+
+## 6.1 Platform targets
+
+1. Android-first deployment target.
+2. Build configuration in [android/app/build.gradle.kts](android/app/build.gradle.kts).
+
+## 6.2 Dependency profile
+
+Primary dependency contract is in [pubspec.yaml](pubspec.yaml), including:
+
+1. Flutter and Provider
+2. speech_to_text and flutter_tts
+3. ML Kit packages
+4. ultralytics_yolo
+5. llamadart and dio
+6. geolocator, url_launcher, open_route_service, flutter_map
+
+## 6.3 Permission profile
+
+Runtime permission and intent requirements are defined in [android/app/src/main/AndroidManifest.xml](android/app/src/main/AndroidManifest.xml).
+
+## 7. Quality and Reliability Specification
+
+## 7.1 Reliability expectations
+
+1. Feature handlers should fail gracefully with user-readable spoken messages.
+2. Cloud requests should apply timeout and fallback controls.
+3. Navigation announcements should avoid noisy repetition.
+4. SOS flow should remain quickly accessible regardless of active task.
+
+## 7.2 Current testing posture
+
+Existing unit and smoke tests are present but limited in breadth, concentrated around:
+
+1. History model and provider behaviors
+2. STT command mapping
+3. Basic history-screen widget smoke path
+
+Broader integration coverage is still an active need.
+
+## 8. Risk Register (Current)
+
+1. High feature breadth with limited automated coverage can increase regression risk.
+2. Real-time performance can vary widely across devices.
+3. Voice command phrase overlap can still produce occasional intent ambiguity.
+4. Large on-device model downloads and memory requirements can impact user setup and runtime behavior.
+
+## 9. Roadmap Context (Separated From Current Scope)
+
+This section preserves strategic direction without claiming it is shipped.
+
+Potential roadmap directions:
+
+1. Medication and health workflow support
+2. Richer proactive scheduling behavior
+3. Deeper caregiver collaboration tools
+4. Optional future edge-device exploration
+
+Any roadmap feature should be documented as planned until implemented and validated in code.
+
+## 10. Source-of-Truth Rule
+
+If this specification conflicts with runtime behavior:
+
+1. Code in [lib](lib) is authoritative.
+2. Update this file and related docs to match implementation reality.
+
+Related documents:
+
+1. [README.md](README.md)
+2. [ARCHITECTURE.md](ARCHITECTURE.md)
+3. [FEATURES.md](FEATURES.md)
+4. [SETUP.md](SETUP.md)
