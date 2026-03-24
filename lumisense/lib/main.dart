@@ -86,9 +86,7 @@ Future<void> main() async {
 
         // On-device model manager (download, cache, lifecycle).
         Provider<ModelManager>(
-          create: (ctx) => ModelManager(
-            prefs: ctx.read<SharedPreferences>(),
-          ),
+          create: (_) => ModelManager(),
           dispose: (_, mgr) => mgr.dispose(),
         ),
       ],

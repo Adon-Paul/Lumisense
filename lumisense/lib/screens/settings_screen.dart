@@ -30,6 +30,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _orsApiKeyObscured = true;
   bool _weatherApiKeyObscured = true;
 
+  /// Cached model readiness state, refreshed explicitly to avoid
+  /// the FutureBuilder anti-pattern of recreating futures on every build.
+  final Map<OnDeviceModel, bool> _modelReadyState = {
+    for (final model in OnDeviceModel.values) model: false,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -46,12 +52,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _weatherApiKeyController =
         TextEditingController(text: settings.weatherApiKey);
 
+    // Load model readiness state once on init
+    _refreshModelReadyState();
+
     // Announce screen to TTS for accessibility
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<TtsService>().speak('Settings. Adjust speech, emergency contact, and A I key.');
       }
     });
+  }
+
+  Future<void> _refreshModelReadyState() async {
+    final modelMgr = context.read<ModelManager>();
+    for (final model in OnDeviceModel.values) {
+      _modelReadyState[model] = await modelMgr.isModelReady(model);
+    }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -761,107 +778,102 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: AppTheme.textHint, fontSize: 12),
             ),
             const SizedBox(height: 12),
-            // Status + Action buttons
-            FutureBuilder<bool>(
-              future: modelMgr.isModelReady(model),
-              builder: (context, snapshot) {
-                final isReady = snapshot.data ?? false;
-
-                return ValueListenableBuilder<double?>(
-                  valueListenable: modelMgr.downloadProgress[model]!,
-                  builder: (context, progress, _) {
-                    // Currently downloading
-                    if (progress != null) {
-                      return Column(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              backgroundColor: AppTheme.textHint
-                                  .withValues(alpha: 0.3),
-                              valueColor:
-                                  const AlwaysStoppedAnimation<Color>(
-                                      AppTheme.accentBlue),
-                              minHeight: 8,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Downloading ${(progress * 100).toInt()}%',
-                                style: const TextStyle(
-                                    color: AppTheme.accentBlue,
-                                    fontSize: 13),
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  modelMgr.cancelDownload(model);
-                                  HapticFeedback.mediumImpact();
-                                },
-                                child: const Text('Cancel',
-                                    style: TextStyle(
-                                        color: AppTheme.error)),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    }
-
-                    // Model ready
-                    if (isReady) {
-                      return Row(
-                        children: [
-                          const Icon(Icons.check_circle,
-                              color: AppTheme.success, size: 18),
-                          const SizedBox(width: 6),
-                          const Text('Ready',
-                              style: TextStyle(
-                                  color: AppTheme.success,
-                                  fontWeight: FontWeight.w600)),
-                          const Spacer(),
-                          TextButton.icon(
-                            onPressed: () async {
-                              await modelMgr.deleteModel(model);
-                              HapticFeedback.mediumImpact();
-                              if (mounted) {
-                                setState(() {});
-                                context.read<TtsService>().speak(
-                                    '${info.displayName} deleted.');
-                              }
-                            },
-                            icon: const Icon(Icons.delete_outline,
-                                size: 18, color: AppTheme.error),
-                            label: const Text('Delete',
-                                style:
-                                    TextStyle(color: AppTheme.error)),
-                          ),
-                        ],
-                      );
-                    }
-
-                    // Not downloaded
-                    return SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _downloadModel(model),
-                        icon: const Icon(Icons.download, size: 18),
-                        label: Text(
-                            'Download (~${info.estimatedTotalSizeMB}MB)'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.accentBlue,
-                          foregroundColor: AppTheme.darkBackground,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+            // Status + Action buttons (uses cached _modelReadyState)
+            ValueListenableBuilder<double?>(
+              valueListenable: modelMgr.downloadProgress[model]!,
+              builder: (context, progress, _) {
+                // Currently downloading
+                if (progress != null) {
+                  return Column(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          backgroundColor: AppTheme.textHint
+                              .withValues(alpha: 0.3),
+                          valueColor:
+                              const AlwaysStoppedAnimation<Color>(
+                                  AppTheme.accentBlue),
+                          minHeight: 8,
                         ),
                       ),
-                    );
-                  },
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Downloading ${(progress * 100).toInt()}%',
+                            style: const TextStyle(
+                                color: AppTheme.accentBlue,
+                                fontSize: 13),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              modelMgr.cancelDownload(model);
+                              HapticFeedback.mediumImpact();
+                            },
+                            child: const Text('Cancel',
+                                style: TextStyle(
+                                    color: AppTheme.error)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                }
+
+                final isReady = _modelReadyState[model] ?? false;
+
+                // Model ready
+                if (isReady) {
+                  return Row(
+                    children: [
+                      const Icon(Icons.check_circle,
+                          color: AppTheme.success, size: 18),
+                      const SizedBox(width: 6),
+                      const Text('Ready',
+                          style: TextStyle(
+                              color: AppTheme.success,
+                              fontWeight: FontWeight.w600)),
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: () async {
+                          await modelMgr.deleteModel(model);
+                          HapticFeedback.mediumImpact();
+                          if (mounted) {
+                            await _refreshModelReadyState();
+                            context.read<TtsService>().speak(
+                                '${info.displayName} deleted.');
+                          }
+                        },
+                        icon: const Icon(Icons.delete_outline,
+                            size: 18, color: AppTheme.error),
+                        label: const Text('Delete',
+                            style:
+                                TextStyle(color: AppTheme.error)),
+                      ),
+                    ],
+                  );
+                }
+
+                // Not downloaded
+                return SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _downloadModel(model),
+                    icon: const Icon(Icons.download, size: 18),
+                    label: Text(
+                        'Download (~${info.estimatedTotalSizeMB}MB)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accentBlue,
+                      foregroundColor: AppTheme.darkBackground,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
                 );
               },
             ),
@@ -883,7 +895,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await modelMgr.downloadModel(model);
       if (mounted) {
-        setState(() {});
+        await _refreshModelReadyState();
         HapticFeedback.heavyImpact();
         await tts.speak('${info.displayName} downloaded and ready.');
       }

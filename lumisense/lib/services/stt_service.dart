@@ -142,15 +142,141 @@ class SttService {
   // ─── Command mapping ─────────────────────────────────────────────────────
 
   /// Maps raw recognised text to a [VoiceCommand].
+  ///
+  /// Commands are ordered from most specific to least specific to prevent
+  /// false matches. Multi-word phrases are checked before single keywords.
   static VoiceCommand mapToCommand(String text) {
     final String lower = text.toLowerCase().trim();
 
-    // Read / OCR
-    if (lower.contains('read') || lower.contains('text') || lower.contains('scan')) {
-      return VoiceCommand.readText;
+    // ── 1. Emergency / SOS (highest priority — safety first) ────────────
+    if (lower.contains('emergency') ||
+        lower.contains('sos') ||
+        lower.contains('help me')) {
+      return VoiceCommand.sos;
     }
 
-    // Identify / object detection
+    // ── 2. Stop (second highest — user wants to cancel) ─────────────────
+    if (lower.contains('stop') || lower.contains('quiet') || lower.contains('cancel')) {
+      return VoiceCommand.stop;
+    }
+
+    // ── 3. Turn-by-turn navigation (startsWith — before generic "navigate")
+    if (lower.startsWith('navigate to') ||
+        lower.startsWith('take me to') ||
+        lower.startsWith('directions to') ||
+        lower.startsWith('walk to') ||
+        lower.startsWith('go to') ||
+        lower.startsWith('route to')) {
+      return VoiceCommand.navigateTo;
+    }
+
+    // ── 4. Call contact (startsWith — "call mom", before generic keywords)
+    if (lower.startsWith('call ') ||
+        lower.startsWith('phone ') ||
+        lower.startsWith('dial ') ||
+        lower.startsWith('ring ')) {
+      return VoiceCommand.callContact;
+    }
+
+    // ── 5. QR / Payment (before generic "scan" which would match readText)
+    if (lower.contains('scan qr') ||
+        lower.contains('scan code') ||
+        lower.contains('qr code') ||
+        lower.contains('upi') ||
+        lower.contains('payment') ||
+        lower.contains('pay')) {
+      return VoiceCommand.scanPayment;
+    }
+
+    // ── 6. People detection (before generic "detect" / "who")
+    if (lower.contains('who is there') ||
+        lower.contains('who\'s there') ||
+        lower.contains('anyone there') ||
+        lower.contains('people') ||
+        lower.contains('faces') ||
+        lower.contains('person') ||
+        lower.contains('someone')) {
+      return VoiceCommand.detectPeople;
+    }
+
+    // ── 7. On-device AI toggle (multi-word phrases)
+    if (lower.contains('offline mode') ||
+        lower.contains('on device') ||
+        lower.contains('local model') ||
+        lower.contains('on-device') ||
+        lower.contains('switch to local') ||
+        lower.contains('switch to cloud')) {
+      return VoiceCommand.toggleOnDevice;
+    }
+
+    // ── 8. Repeat current direction
+    if (lower.contains('repeat') ||
+        lower.contains('say again') ||
+        lower.contains('what was that') ||
+        lower.contains('current step')) {
+      return VoiceCommand.repeatDirection;
+    }
+
+    // ── 9. Where am I / status
+    if (lower.contains('where am i') ||
+        lower.contains('how far') ||
+        lower.contains('status') ||
+        lower.contains('remaining') ||
+        lower.contains('eta')) {
+      return VoiceCommand.whereAmI;
+    }
+
+    // ── 10. Currency identification
+    if (lower.contains('currency') ||
+        lower.contains('money') ||
+        lower.contains('rupee') ||
+        lower.contains('cash') ||
+        lower.contains('denomination') ||
+        lower.contains('bill') ||
+        lower.contains('note')) {
+      return VoiceCommand.identifyCurrency;
+    }
+
+    // ── 11. Brightness / light detection
+    if (lower.contains('brightness') ||
+        lower.contains('lights on') ||
+        lower.contains('lights off') ||
+        lower.contains('how bright') ||
+        lower.contains('light') ||
+        lower.contains('dark')) {
+      return VoiceCommand.checkBrightness;
+    }
+
+    // ── 12. Weather check
+    if (lower.contains('weather') ||
+        lower.contains('temperature') ||
+        lower.contains('rain') ||
+        lower.contains('forecast') ||
+        lower.contains('cold outside') ||
+        lower.contains('hot')) {
+      return VoiceCommand.checkWeather;
+    }
+
+    // ── 13. Describe / scene description
+    if (lower.contains('describe') ||
+        lower.contains('what do you see') ||
+        lower.contains('tell me about') ||
+        lower.contains('scene') ||
+        lower.contains('surroundings') ||
+        lower.contains('around me') ||
+        lower.contains('look')) {
+      return VoiceCommand.describeScene;
+    }
+
+    // ── 14. Navigation mode toggle (generic "navigate", "walk")
+    if (lower.contains('navigate') ||
+        lower.contains('navigation') ||
+        lower.contains('guide me') ||
+        lower.contains('walk')) {
+      return VoiceCommand.navigation;
+    }
+
+    // ── 15. Identify objects (generic "detect", "what is", "identify")
     if (lower.contains('identify') ||
         lower.contains('what is') ||
         lower.contains('what are') ||
@@ -164,138 +290,14 @@ class SttService {
       return VoiceCommand.identifyObjects;
     }
 
-    // Turn-by-turn navigation: "navigate to [destination]" or "take me to [destination]"
-    if (lower.startsWith('navigate to') ||
-        lower.startsWith('take me to') ||
-        lower.startsWith('directions to') ||
-        lower.startsWith('walk to') ||
-        lower.startsWith('go to') ||
-        lower.startsWith('route to')) {
-      return VoiceCommand.navigateTo;
+    // ── 16. Read / OCR (generic "read", "text", "scan" — most ambiguous)
+    if (lower.contains('read') || lower.contains('text') || lower.contains('scan')) {
+      return VoiceCommand.readText;
     }
 
-    // Repeat current direction
-    if (lower.contains('repeat') ||
-        lower.contains('say again') ||
-        lower.contains('what was that') ||
-        lower.contains('current step')) {
-      return VoiceCommand.repeatDirection;
-    }
-
-    // Where am I / status
-    if (lower.contains('where am i') ||
-        lower.contains('how far') ||
-        lower.contains('status') ||
-        lower.contains('remaining') ||
-        lower.contains('eta')) {
-      return VoiceCommand.whereAmI;
-    }
-
-    // Currency identification
-    if (lower.contains('currency') ||
-        lower.contains('money') ||
-        lower.contains('note') ||
-        lower.contains('rupee') ||
-        lower.contains('cash') ||
-        lower.contains('denomination') ||
-        lower.contains('bill')) {
-      return VoiceCommand.identifyCurrency;
-    }
-
-    // Brightness / light detection
-    if (lower.contains('brightness') ||
-        lower.contains('light') ||
-        lower.contains('dark') ||
-        lower.contains('lights on') ||
-        lower.contains('lights off') ||
-        lower.contains('how bright')) {
-      return VoiceCommand.checkBrightness;
-    }
-
-    // Weather check
-    if (lower.contains('weather') ||
-        lower.contains('temperature') ||
-        lower.contains('rain') ||
-        lower.contains('forecast') ||
-        lower.contains('hot') ||
-        lower.contains('cold outside')) {
-      return VoiceCommand.checkWeather;
-    }
-
-    // Call contact — "call mom", "phone dad", "dial john"
-    if (lower.startsWith('call ') ||
-        lower.startsWith('phone ') ||
-        lower.startsWith('dial ') ||
-        lower.startsWith('ring ')) {
-      return VoiceCommand.callContact;
-    }
-
-    // People detection — "who is there", "faces", "people", "anyone there"
-    if (lower.contains('who is there') ||
-        lower.contains('who\'s there') ||
-        lower.contains('anyone there') ||
-        lower.contains('people') ||
-        lower.contains('faces') ||
-        lower.contains('person') ||
-        lower.contains('someone')) {
-      return VoiceCommand.detectPeople;
-    }
-
-    // On-device AI toggle
-    if (lower.contains('offline mode') ||
-        lower.contains('on device') ||
-        lower.contains('local model') ||
-        lower.contains('on-device') ||
-        lower.contains('switch to local') ||
-        lower.contains('switch to cloud')) {
-      return VoiceCommand.toggleOnDevice;
-    }
-
-    // UPI Payment / QR scan
-    if (lower.contains('pay') ||
-        lower.contains('payment') ||
-        lower.contains('scan qr') ||
-        lower.contains('scan code') ||
-        lower.contains('qr code') ||
-        lower.contains('upi')) {
-      return VoiceCommand.scanPayment;
-    }
-
-    // Navigation mode toggle (obstacle detection only)
-    if (lower.contains('navigate') ||
-        lower.contains('navigation') ||
-        lower.contains('guide me') ||
-        lower.contains('walk')) {
-      return VoiceCommand.navigation;
-    }
-
-    // Describe / scene description
-    if (lower.contains('describe') ||
-        lower.contains('what do you see') ||
-        lower.contains('tell me about') ||
-        lower.contains('explain') ||
-        lower.contains('scene') ||
-        lower.contains('surroundings') ||
-        lower.contains('around me') ||
-        lower.contains('look')) {
-      return VoiceCommand.describeScene;
-    }
-
-    // Help
+    // ── 17. Help (generic — after SOS to prevent "help me" false match)
     if (lower.contains('help') || lower.contains('commands')) {
       return VoiceCommand.help;
-    }
-
-    // Emergency / SOS
-    if (lower.contains('emergency') ||
-        lower.contains('sos') ||
-        lower.contains('help me')) {
-      return VoiceCommand.sos;
-    }
-
-    // Stop
-    if (lower.contains('stop') || lower.contains('quiet') || lower.contains('cancel')) {
-      return VoiceCommand.stop;
     }
 
     return VoiceCommand.unknown;

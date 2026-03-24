@@ -181,7 +181,8 @@ class _CameraScreenState extends State<CameraScreen>
     _navController.dispose();
     _directionsService?.removeListener(_onDirectionsChanged);
     _directionsService?.dispose();
-    _onDeviceOrchestrator?.dispose();
+    _onDeviceOrchestrator?.cancelAll();
+    unawaited(_onDeviceOrchestrator?.dispose() ?? Future.value());
     super.dispose();
   }
 
@@ -371,11 +372,11 @@ class _CameraScreenState extends State<CameraScreen>
   // Navigation Mode
   // ═══════════════════════════════════════════════════════════════════════════
 
-  void _toggleOnDeviceMode() {
+  Future<void> _toggleOnDeviceMode() async {
     final TtsService tts = context.read<TtsService>();
     final SettingsProvider settings = context.read<SettingsProvider>();
     final bool newValue = !settings.useOnDeviceModels;
-    settings.setUseOnDeviceModels(newValue);
+    await settings.setUseOnDeviceModels(newValue);
     HapticFeedback.mediumImpact();
     tts.speak(
       newValue
@@ -794,6 +795,11 @@ class _CameraScreenState extends State<CameraScreen>
       String description;
       if (useOnDevice) {
         final orchestrator = _getOrchestrator();
+        // Announce if model needs first-time loading into RAM
+        if (!orchestrator.visionService.isReady) {
+          setState(() => _statusMessage = 'Loading on-device AI model...');
+          await tts.speak('Loading AI model. This may take a moment.');
+        }
         description = await orchestrator.describeScene(frameBytes);
       } else {
         final GeminiService gemini = _getGeminiService(settings);
@@ -914,6 +920,10 @@ class _CameraScreenState extends State<CameraScreen>
       String result;
       if (useOnDevice) {
         final orchestrator = _getOrchestrator();
+        if (!orchestrator.visionService.isReady) {
+          setState(() => _statusMessage = 'Loading on-device AI model...');
+          await tts.speak('Loading AI model. This may take a moment.');
+        }
         result = await orchestrator.identifyCurrency(frameBytes);
       } else {
         final CurrencyDetectorService service =

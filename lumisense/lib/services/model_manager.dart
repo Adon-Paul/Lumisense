@@ -4,17 +4,14 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 /// Manages downloading, caching, and lifecycle of on-device GGUF model files.
 ///
 /// Models are stored in the app's documents directory (persistent across
 /// restarts, cleared only on uninstall). Downloads are resumable via HTTP
 /// Range headers and report progress via a [ValueNotifier].
 class ModelManager {
-  ModelManager({required SharedPreferences prefs}) : _prefs = prefs;
+  ModelManager();
 
-  final SharedPreferences _prefs;
   final Dio _dio = Dio();
 
   // ─── Model Definitions ──────────────────────────────────────────────────────
