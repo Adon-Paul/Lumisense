@@ -4,15 +4,24 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+
 /// Manages downloading, caching, and lifecycle of on-device GGUF model files.
 ///
 /// Models are stored in the app's documents directory (persistent across
 /// restarts, cleared only on uninstall). Downloads are resumable via HTTP
-/// Range headers and report progress via a [ValueNotifier].
+/// Range headers, survive network interruptions with automatic retry, and
+/// keep the screen awake to prevent the OS from killing the connection.
 class ModelManager {
   ModelManager();
 
   final Dio _dio = Dio();
+
+  /// Maximum number of automatic retries on transient network failures.
+  static const int _maxRetries = 3;
+
+  /// Delay between retry attempts (doubles each retry).
+  static const Duration _baseRetryDelay = Duration(seconds: 3);
 
   // ─── Model Definitions ──────────────────────────────────────────────────────
 
@@ -25,11 +34,11 @@ class ModelManager {
       modelUrl:
           'https://huggingface.co/ggml-org/SmolVLM2-2.2B-Instruct-GGUF/resolve/main/SmolVLM2-2.2B-Instruct-Q4_K_M.gguf',
       projectorUrl:
-          'https://huggingface.co/ggml-org/SmolVLM2-2.2B-Instruct-GGUF/resolve/main/SmolVLM2-2.2B-Instruct-mmproj-f16.gguf',
+          'https://huggingface.co/ggml-org/SmolVLM2-2.2B-Instruct-GGUF/resolve/main/mmproj-SmolVLM2-2.2B-Instruct-f16.gguf',
       modelFileName: 'smolvlm2-2.2b-q4km.gguf',
-      projectorFileName: 'smolvlm2-2.2b-mmproj-f16.gguf',
-      estimatedModelSizeMB: 1400,
-      estimatedProjectorSizeMB: 800,
+      projectorFileName: 'mmproj-smolvlm2-2.2b-f16.gguf',
+      estimatedModelSizeMB: 1061,
+      estimatedProjectorSizeMB: 832,
       estimatedRamMB: 3000,
       supportsVision: true,
       supportsFunctionCalling: false,
@@ -39,7 +48,7 @@ class ModelManager {
       displayName: 'Gemma 3n E2B (Assistant)',
       description: 'Conversational AI with function calling',
       modelUrl:
-          'https://huggingface.co/ggml-org/gemma-3n-E2B-it-GGUF/resolve/main/gemma-3n-E2B-it-Q4_K_M.gguf',
+          'https://huggingface.co/unsloth/gemma-3n-E2B-it-GGUF/resolve/main/gemma-3n-E2B-it-Q4_K_M.gguf',
       projectorUrl: null,
       modelFileName: 'gemma-3n-e2b-q4km.gguf',
       projectorFileName: null,
@@ -57,6 +66,12 @@ class ModelManager {
   final Map<OnDeviceModel, ValueNotifier<double?>> downloadProgress = {
     for (final model in OnDeviceModel.values)
       model: ValueNotifier<double?>(null),
+  };
+
+  /// Last error message per model. Null if no error.
+  final Map<OnDeviceModel, ValueNotifier<String?>> downloadError = {
+    for (final model in OnDeviceModel.values)
+      model: ValueNotifier<String?>(null),
   };
 
   /// Active cancel tokens for in-flight downloads.
@@ -112,31 +127,13 @@ class ModelManager {
     return total;
   }
 
-  // ─── Disk Space Check ─────────────────────────────────────────────────────
-
-  /// Returns available disk space in MB, or -1 if unable to determine.
-  Future<int> availableDiskSpaceMB() async {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final stat = await FileStat.stat(dir.path);
-      // FileStat doesn't provide free space; use a heuristic approach:
-      // try writing to check, or just return -1 (unknown).
-      // On Android, we can check via platform-specific code, but for now
-      // we do a basic check by looking at the storage directory.
-      if (stat.type == FileSystemEntityType.directory) {
-        // Can't get free space from Dart alone — return -1 to signal unknown.
-        return -1;
-      }
-      return -1;
-    } catch (_) {
-      return -1;
-    }
-  }
-
   // ─── Download ───────────────────────────────────────────────────────────────
 
-  /// Downloads model files with progress reporting. Resumes partial downloads
-  /// using HTTP Range headers.
+  /// Downloads model files with progress reporting, automatic retry on
+  /// transient errors, and wakelock to prevent sleep mid-download.
+  ///
+  /// Partial files are preserved on failure so the next attempt resumes
+  /// from where it left off.
   Future<void> downloadModel(OnDeviceModel model) async {
     final info = models[model]!;
     final dir = Directory(await _modelsDir);
@@ -144,15 +141,26 @@ class ModelManager {
 
     final cancelToken = CancelToken();
     _cancelTokens[model] = cancelToken;
+    downloadError[model]!.value = null;
+
+    // Keep screen on so the OS doesn't kill our download
+    bool wakelockWasEnabled = false;
+    try {
+      wakelockWasEnabled = await WakelockPlus.enabled;
+      if (!wakelockWasEnabled) {
+        await WakelockPlus.enable();
+      }
+    } catch (e) {
+      debugPrint('ModelManager: wakelock enable failed (non-fatal): $e');
+    }
 
     try {
-      // Calculate total parts for combined progress.
       final int totalParts = info.projectorUrl != null ? 2 : 1;
       int completedParts = 0;
 
       // Download main model
       downloadProgress[model]!.value = 0.0;
-      await _downloadFileResumable(
+      await _downloadFileWithRetry(
         url: info.modelUrl,
         savePath: await modelPath(model),
         cancelToken: cancelToken,
@@ -165,7 +173,7 @@ class ModelManager {
 
       // Download projector if needed
       if (info.projectorUrl != null) {
-        await _downloadFileResumable(
+        await _downloadFileWithRetry(
           url: info.projectorUrl!,
           savePath: (await projectorPath(model))!,
           cancelToken: cancelToken,
@@ -176,43 +184,116 @@ class ModelManager {
         );
       }
 
-      downloadProgress[model]!.value = null; // Done
+      downloadProgress[model]!.value = null; // Done — success
     } on DioException catch (e) {
       downloadProgress[model]!.value = null;
       if (e.type == DioExceptionType.cancel) {
         debugPrint('Download cancelled for ${info.displayName}');
-        // Clean up partial files on cancel
-        await _deleteFile(await modelPath(model));
-        if (info.projectorFileName != null) {
-          await _deleteFile((await projectorPath(model))!);
-        }
+        // Don't delete partial files on cancel — they enable resume
       } else {
+        downloadError[model]!.value = _friendlyErrorMessage(e);
         rethrow;
       }
+    } on DownloadException catch (e) {
+      downloadProgress[model]!.value = null;
+      downloadError[model]!.value = e.message;
+      rethrow;
+    } catch (e) {
+      downloadProgress[model]!.value = null;
+      downloadError[model]!.value = 'Unexpected error: $e';
+      rethrow;
     } finally {
       _cancelTokens.remove(model);
+      // Restore wakelock to previous state
+      try {
+        if (!wakelockWasEnabled) {
+          await WakelockPlus.disable();
+        }
+      } catch (_) {}
     }
   }
 
-  /// Cancel an in-flight download.
+  /// Cancel an in-flight download. Partial files are kept for resume.
   void cancelDownload(OnDeviceModel model) {
     _cancelTokens[model]?.cancel('User cancelled');
   }
 
   /// Delete downloaded model files to free storage.
   Future<void> deleteModel(OnDeviceModel model) async {
+    downloadError[model]!.value = null;
     await _deleteFile(await modelPath(model));
     final pPath = await projectorPath(model);
     if (pPath != null) await _deleteFile(pPath);
   }
 
-  // ─── Internal ───────────────────────────────────────────────────────────────
+  // ─── Internal: retry wrapper ───────────────────────────────────────────────
+
+  /// Wraps [_downloadFileResumable] with automatic retry on transient errors.
+  Future<void> _downloadFileWithRetry({
+    required String url,
+    required String savePath,
+    required CancelToken cancelToken,
+    required void Function(double progress) onProgress,
+  }) async {
+    int attempt = 0;
+
+    while (true) {
+      try {
+        await _downloadFileResumable(
+          url: url,
+          savePath: savePath,
+          cancelToken: cancelToken,
+          onProgress: onProgress,
+        );
+        return; // Success
+      } on DioException catch (e) {
+        if (e.type == DioExceptionType.cancel) rethrow;
+
+        attempt++;
+        final bool isRetryable = _isRetryableError(e);
+
+        if (!isRetryable || attempt >= _maxRetries) {
+          debugPrint('Download failed after $attempt attempts: '
+              '${e.type} ${e.response?.statusCode} ${e.message}');
+          rethrow;
+        }
+
+        // Exponential backoff: 3s, 6s, 12s
+        final delay = _baseRetryDelay * (1 << (attempt - 1));
+        debugPrint('Download attempt $attempt failed (${e.type}), '
+            'retrying in ${delay.inSeconds}s...');
+        await Future.delayed(delay);
+        // Loop continues — _downloadFileResumable will pick up partial file
+      }
+    }
+  }
+
+  /// Returns true for errors that are worth retrying (network issues, timeouts,
+  /// server errors) vs permanent failures (404, 403).
+  bool _isRetryableError(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.connectionError:
+        return true;
+      case DioExceptionType.badResponse:
+        final code = e.response?.statusCode ?? 0;
+        // Retry on 5xx (server errors), 429 (rate limited)
+        // Don't retry on 4xx (client errors like 404, 403)
+        return code >= 500 || code == 429;
+      default:
+        return false;
+    }
+  }
+
+  // ─── Internal: resumable download ──────────────────────────────────────────
 
   /// Downloads a file with resume support via HTTP Range headers.
   ///
   /// If a partial file exists at [savePath], sends a Range header to resume
-  /// from where it left off. Falls back to full download on 416 (range not
-  /// satisfiable) or if the server doesn't support ranges.
+  /// from where it left off. The partial data is streamed and **appended**
+  /// to the existing file (not overwritten).
   Future<void> _downloadFileResumable({
     required String url,
     required String savePath,
@@ -226,8 +307,9 @@ class ModelManager {
       existingBytes = partialFile.lengthSync();
     }
 
-    // First, try a HEAD request to get total size
+    // HEAD request to get total size and check range support
     int totalBytes = 0;
+    bool supportsRanges = false;
     try {
       final headResponse = await _dio.head<void>(
         url,
@@ -242,6 +324,8 @@ class ModelManager {
       if (contentLength != null) {
         totalBytes = int.tryParse(contentLength) ?? 0;
       }
+      final acceptRanges = headResponse.headers.value('accept-ranges');
+      supportsRanges = acceptRanges != null && acceptRanges != 'none';
     } catch (_) {
       // HEAD failed — proceed without knowing total size
     }
@@ -252,57 +336,111 @@ class ModelManager {
       return;
     }
 
-    // Try resumable download if we have partial data
-    if (existingBytes > 0 && totalBytes > 0) {
+    // Resume via Range header + streaming append
+    if (existingBytes > 0 && totalBytes > 0 && supportsRanges) {
       try {
-        await _dio.download(
+        final response = await _dio.get<ResponseBody>(
           url,
-          savePath,
           cancelToken: cancelToken,
-          deleteOnError: false,
           options: Options(
             followRedirects: true,
             maxRedirects: 5,
             receiveTimeout: const Duration(minutes: 30),
+            responseType: ResponseType.stream,
             headers: {'Range': 'bytes=$existingBytes-'},
           ),
-          onReceiveProgress: (received, total) {
-            final totalReceived = existingBytes + received;
-            if (totalBytes > 0) {
-              onProgress(totalReceived / totalBytes);
-            } else if (total > 0) {
-              onProgress(totalReceived / (existingBytes + total));
-            }
-          },
         );
-        return;
+
+        final statusCode = response.statusCode ?? 0;
+        if (statusCode == 206) {
+          // Server returned partial content — append to file
+          final sink = partialFile.openWrite(mode: FileMode.append);
+          int receivedSoFar = 0;
+          try {
+            await for (final chunk in response.data!.stream) {
+              sink.add(chunk);
+              receivedSoFar += chunk.length;
+              final totalReceived = existingBytes + receivedSoFar;
+              onProgress(totalReceived / totalBytes);
+            }
+          } finally {
+            await sink.flush();
+            await sink.close();
+          }
+          return;
+        }
+
+        // Server returned 200 instead of 206 — it doesn't support our range.
+        // Fall through to full download.
+        debugPrint('Server returned $statusCode instead of 206, '
+            'restarting download');
+        if (partialFile.existsSync()) await partialFile.delete();
       } on DioException catch (e) {
         if (e.type == DioExceptionType.cancel) rethrow;
-        // 416 Range Not Satisfiable or server doesn't support ranges
-        // Fall through to full download
-        debugPrint('Resume failed (${e.response?.statusCode}), '
-            'restarting download from scratch');
-        if (partialFile.existsSync()) await partialFile.delete();
+        final code = e.response?.statusCode ?? 0;
+        if (code == 416) {
+          // Range not satisfiable — partial file is likely corrupt
+          debugPrint('416 Range Not Satisfiable, restarting download');
+          if (partialFile.existsSync()) await partialFile.delete();
+        } else {
+          rethrow; // Let retry wrapper handle it
+        }
       }
     }
 
-    // Full download (no resume)
-    await _dio.download(
+    // Full download (no resume) — stream to file
+    final response = await _dio.get<ResponseBody>(
       url,
-      savePath,
       cancelToken: cancelToken,
-      deleteOnError: false,
-      onReceiveProgress: (received, total) {
-        if (total > 0) {
-          onProgress(received / total);
-        }
-      },
       options: Options(
         followRedirects: true,
         maxRedirects: 5,
         receiveTimeout: const Duration(minutes: 30),
+        responseType: ResponseType.stream,
       ),
     );
+
+    final contentLength = response.headers.value('content-length');
+    final fullSize =
+        contentLength != null ? int.tryParse(contentLength) ?? 0 : totalBytes;
+
+    final sink = partialFile.openWrite(mode: FileMode.write);
+    int received = 0;
+    try {
+      await for (final chunk in response.data!.stream) {
+        sink.add(chunk);
+        received += chunk.length;
+        if (fullSize > 0) {
+          onProgress(received / fullSize);
+        }
+      }
+    } finally {
+      await sink.flush();
+      await sink.close();
+    }
+  }
+
+  /// Produces a user-friendly error message from a Dio exception.
+  static String _friendlyErrorMessage(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+        return 'Connection timed out. Check your internet and try again.';
+      case DioExceptionType.connectionError:
+        return 'No internet connection. Connect to Wi-Fi and try again.';
+      case DioExceptionType.badResponse:
+        final code = e.response?.statusCode ?? 0;
+        if (code == 404) return 'Model file not found on server (404).';
+        if (code == 403) return 'Access denied by server (403).';
+        if (code == 429) return 'Too many requests. Wait a moment and retry.';
+        if (code >= 500) return 'Server error ($code). Try again later.';
+        return 'Download failed with status $code.';
+      case DioExceptionType.cancel:
+        return 'Download was cancelled.';
+      default:
+        return 'Download failed: ${e.message ?? 'unknown error'}';
+    }
   }
 
   Future<void> _deleteFile(String path) async {
@@ -314,11 +452,23 @@ class ModelManager {
     for (final notifier in downloadProgress.values) {
       notifier.dispose();
     }
+    for (final notifier in downloadError.values) {
+      notifier.dispose();
+    }
     _dio.close();
   }
 }
 
-// ─── Enums & Models ───────────────────────────────────────────────────────────
+// ─── Exceptions ──────────────────────────────────────────────────────────────
+
+class DownloadException implements Exception {
+  final String message;
+  const DownloadException(this.message);
+  @override
+  String toString() => 'DownloadException: $message';
+}
+
+// ─── Enums & Models ──────────────────────────────────────────────────────────
 
 /// Identifiers for available on-device models.
 enum OnDeviceModel {

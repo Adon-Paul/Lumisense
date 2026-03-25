@@ -248,25 +248,39 @@ class _CameraScreenState extends State<CameraScreen>
     _sttService.onListeningChanged = (bool listening) {
       if (mounted) setState(() => _isListening = listening);
     };
+
+    // Wire TTS completion → STT auto-resume.
+    final tts = context.read<TtsService>();
+    tts.onSpeakComplete = () {
+      if (mounted) _sttService.resumeAfterTts();
+    };
+    tts.onSpeakCancel = () {
+      if (mounted) _sttService.resumeAfterTts();
+    };
   }
 
   void _handleVoiceCommand(VoiceCommand command, String rawText) {
+    // Mute mic while we process + speak. TTS onSpeakComplete resumes it.
+    _sttService.pauseForTts();
+
     // Stop and SOS are high-priority interrupts — always allowed.
     switch (command) {
       case VoiceCommand.stop:
         final TtsService tts = context.read<TtsService>();
         tts.chunkReadingCancelled = true;
         tts.stop();
-        // Cancel SOS countdown if pending.
         if (_sosPending) {
           _sosPending = false;
           tts.speak('SOS cancelled.');
+          return;
         }
-        // Stop turn-by-turn navigation if active.
         if (_directionsService?.isActive ?? false) {
           _stopTurnByTurnNavigation();
           tts.speak('Walking directions stopped.');
+          return;
         }
+        // Nothing to stop — just resume listening
+        _sttService.resumeAfterTts();
         return;
       case VoiceCommand.sos:
         _onSosTap();
@@ -289,6 +303,7 @@ class _CameraScreenState extends State<CameraScreen>
         return;
       case VoiceCommand.repeatDirection:
         _directionsService?.repeatCurrentStep();
+        // repeatCurrentStep speaks via TTS → onSpeakComplete resumes
         return;
       case VoiceCommand.whereAmI:
         _directionsService?.announceStatus();
@@ -297,7 +312,10 @@ class _CameraScreenState extends State<CameraScreen>
         break;
     }
 
-    if (_isProcessing) return;
+    if (_isProcessing) {
+      _sttService.resumeAfterTts();
+      return;
+    }
 
     switch (command) {
       case VoiceCommand.readText:
@@ -752,6 +770,15 @@ class _CameraScreenState extends State<CameraScreen>
     // Check if we can use on-device or cloud
     final bool useOnDevice = await _shouldUseOnDevice();
 
+    if (!useOnDevice && settings.onDeviceOnly) {
+      HapticFeedback.heavyImpact();
+      await tts.speak(
+        'On-device only mode is active but models are not downloaded. '
+        'Please download them in Settings.',
+      );
+      return;
+    }
+
     if (!useOnDevice && !settings.hasApiKey) {
       HapticFeedback.heavyImpact();
       await tts.speak(
@@ -825,31 +852,42 @@ class _CameraScreenState extends State<CameraScreen>
       appState.processingState = ProcessingState.speaking;
       await tts.speak(description);
     } on OnDeviceModelException catch (e) {
-      // On-device failed — fall back to cloud silently
       if (!mounted) return;
-      debugPrint('On-device failed, falling back to cloud: ${e.message}');
-      try {
-        final Uint8List frameBytes = await _captureFrame();
-        if (!mounted) return;
-        final GeminiService gemini = _getGeminiService(settings);
-        final String description = await gemini.describeScene(frameBytes);
-        if (!mounted) return;
-        setState(() {
-          _statusMessage = 'Scene described (cloud fallback)';
-          _lastResultPreview = description;
-        });
-        await history.addEntry(
-          type: HistoryEntryType.sceneDescription,
-          title: 'Scene Description',
-          content: description,
+      // If on-device-only mode, don't fall back to cloud
+      if (settings.onDeviceOnly) {
+        debugPrint('On-device failed (no cloud fallback): ${e.message}');
+        setState(() => _statusMessage = 'On-device AI failed.');
+        appState.processingState = ProcessingState.speaking;
+        await tts.speak(
+          'On-device AI failed: ${e.message}. '
+          'Cloud fallback is disabled. Check your models in Settings.',
         );
-        appState.processingState = ProcessingState.speaking;
-        await tts.speak(description);
-      } on GeminiApiException catch (cloudError) {
-        if (!mounted) return;
-        setState(() => _statusMessage = 'Description failed.');
-        appState.processingState = ProcessingState.speaking;
-        await tts.speak(cloudError.message);
+      } else {
+        // Fall back to cloud silently
+        debugPrint('On-device failed, falling back to cloud: ${e.message}');
+        try {
+          final Uint8List frameBytes = await _captureFrame();
+          if (!mounted) return;
+          final GeminiService gemini = _getGeminiService(settings);
+          final String description = await gemini.describeScene(frameBytes);
+          if (!mounted) return;
+          setState(() {
+            _statusMessage = 'Scene described (cloud fallback)';
+            _lastResultPreview = description;
+          });
+          await history.addEntry(
+            type: HistoryEntryType.sceneDescription,
+            title: 'Scene Description',
+            content: description,
+          );
+          appState.processingState = ProcessingState.speaking;
+          await tts.speak(description);
+        } on GeminiApiException catch (cloudError) {
+          if (!mounted) return;
+          setState(() => _statusMessage = 'Description failed.');
+          appState.processingState = ProcessingState.speaking;
+          await tts.speak(cloudError.message);
+        }
       }
     } on GeminiApiException catch (e) {
       if (!mounted) return;
@@ -891,6 +929,15 @@ class _CameraScreenState extends State<CameraScreen>
     final AppStateProvider appState = context.read<AppStateProvider>();
 
     final bool useOnDevice = await _shouldUseOnDevice();
+
+    if (!useOnDevice && settings.onDeviceOnly) {
+      HapticFeedback.heavyImpact();
+      await tts.speak(
+        'On-device only mode is active but models are not downloaded. '
+        'Please download them in Settings.',
+      );
+      return;
+    }
 
     if (!useOnDevice && !settings.hasApiKey) {
       HapticFeedback.heavyImpact();
@@ -1625,19 +1672,24 @@ class _CameraScreenState extends State<CameraScreen>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: AppTheme.error.withValues(alpha: 0.8),
+                            color: _sttService.continuousMode
+                                ? Colors.green.shade700.withValues(alpha: 0.8)
+                                : AppTheme.error.withValues(alpha: 0.8),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
-                              Icon(Icons.mic, color: Colors.white, size: 16),
-                              SizedBox(width: 4),
-                              Text('Listening...',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12)),
+                              const Icon(Icons.mic, color: Colors.white, size: 16),
+                              const SizedBox(width: 4),
+                              Text(
+                                _sttService.continuousMode
+                                    ? 'Always listening'
+                                    : 'Listening...',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12)),
                             ],
                           ),
                         ),
@@ -1660,10 +1712,12 @@ class _CameraScreenState extends State<CameraScreen>
                         ),
                       const SizedBox(width: 8),
                       _buildTopButton(
-                        icon: _isListening ? Icons.mic_off : Icons.mic,
-                        label: _isListening
-                            ? 'Stop listening'
-                            : 'Voice command',
+                        icon: _sttService.continuousMode
+                            ? (_isListening ? Icons.mic : Icons.hearing)
+                            : Icons.mic_off,
+                        label: _sttService.continuousMode
+                            ? (_isListening ? 'Listening' : 'Waiting...')
+                            : 'Mic off',
                         onPressed: _toggleListening,
                       ),
                     ],
@@ -2126,11 +2180,16 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _toggleListening() async {
     HapticFeedback.mediumImpact();
-    if (_isListening) {
+    if (_sttService.continuousMode) {
+      // Turn off continuous listening
       await _sttService.stopListening();
+      if (mounted) setState(() {});
     } else {
+      // Turn on continuous listening
       await context.read<TtsService>().stop();
+      _sttService.setContinuousMode(true);
       await _sttService.startListening();
+      if (mounted) setState(() {});
     }
   }
 

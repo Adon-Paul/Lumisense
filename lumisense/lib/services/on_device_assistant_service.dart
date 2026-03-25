@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
@@ -154,13 +155,19 @@ class OnDeviceAssistantService {
     final ready =
         await _modelManager.isModelReady(OnDeviceModel.gemma3nAssistant);
     if (!ready) {
-      debugPrint('Gemma 3n E2B model not downloaded yet');
+      final mPath =
+          await _modelManager.modelPath(OnDeviceModel.gemma3nAssistant);
+      debugPrint('Gemma 3n E2B: model not ready');
+      debugPrint('  Model path: $mPath exists=${File(mPath).existsSync()}');
       return false;
     }
 
     try {
       final mPath =
           await _modelManager.modelPath(OnDeviceModel.gemma3nAssistant);
+
+      debugPrint('Gemma 3n E2B: loading model from $mPath '
+          '(${(File(mPath).lengthSync() / 1024 / 1024).toStringAsFixed(0)}MB)');
 
       _engine = LlamaEngine(LlamaBackend());
       await _engine!.loadModel(mPath);
@@ -173,8 +180,12 @@ class OnDeviceAssistantService {
       _isReady = true;
       debugPrint('Gemma 3n E2B assistant model loaded successfully');
       return true;
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Failed to load Gemma 3n E2B: $e');
+      debugPrint('Stack: $stack');
+      try {
+        await _engine?.dispose();
+      } catch (_) {}
       _engine = null;
       _session = null;
       _isReady = false;

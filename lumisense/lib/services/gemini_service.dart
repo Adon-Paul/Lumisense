@@ -42,7 +42,7 @@ class GeminiService {
 
   static const String _groqBaseUrl =
       'https://api.groq.com/openai/v1/chat/completions';
-  static const String _groqModel = 'llama-3.2-11b-vision-preview';
+  static const String _groqModel = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
   /// Default Ollama vision model (moondream — small + fast, ~1.8GB).
   static const String _ollamaModel = 'moondream';

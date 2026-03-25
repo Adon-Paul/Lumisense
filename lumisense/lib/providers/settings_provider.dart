@@ -20,6 +20,7 @@ const String _kOpenRouterApiKey = 'openRouterApiKey';
 const String _kGroqApiKey = 'groqApiKey';
 const String _kOllamaServerUrl = 'ollamaServerUrl';
 const String _kUseOnDeviceModels = 'useOnDeviceModels';
+const String _kOnDeviceOnly = 'onDeviceOnly';
 
 /// Stores and persists user-configurable app settings.
 ///
@@ -51,6 +52,7 @@ class SettingsProvider extends ChangeNotifier {
     _emergencyContact = _prefs.getString(_kEmergencyContact) ?? '';
     _powerReadMode = _prefs.getBool(_kPowerReadMode) ?? true;
     _useOnDeviceModels = _prefs.getBool(_kUseOnDeviceModels) ?? false;
+    _onDeviceOnly = _prefs.getBool(_kOnDeviceOnly) ?? false;
     // API key is loaded asynchronously — call loadApiKey() after construction.
   }
 
@@ -72,6 +74,7 @@ class SettingsProvider extends ChangeNotifier {
   String _ollamaServerUrl = '';
   bool _powerReadMode = true;
   bool _useOnDeviceModels = false;
+  bool _onDeviceOnly = false;
 
   // ─── Getters ─────────────────────────────────────────────────────────────────
 
@@ -110,6 +113,10 @@ class SettingsProvider extends ChangeNotifier {
 
   /// Whether to prefer on-device models over cloud APIs.
   bool get useOnDeviceModels => _useOnDeviceModels;
+
+  /// When true, ONLY use on-device models — never fall back to cloud APIs.
+  /// If the model isn't downloaded, operations will fail rather than use cloud.
+  bool get onDeviceOnly => _onDeviceOnly;
 
   // ─── TTS settings (async — bridge to TtsService) ─────────────────────────
 
@@ -172,6 +179,25 @@ class SettingsProvider extends ChangeNotifier {
     if (_useOnDeviceModels == value) return;
     _useOnDeviceModels = value;
     await _prefs.setBool(_kUseOnDeviceModels, value);
+    // If disabling on-device, also disable on-device-only
+    if (!value && _onDeviceOnly) {
+      _onDeviceOnly = false;
+      await _prefs.setBool(_kOnDeviceOnly, false);
+    }
+    notifyListeners();
+  }
+
+  /// When enabled, the app will ONLY use on-device models and never contact
+  /// cloud APIs. Automatically enables [useOnDeviceModels] if not already on.
+  Future<void> setOnDeviceOnly(bool value) async {
+    if (_onDeviceOnly == value) return;
+    _onDeviceOnly = value;
+    await _prefs.setBool(_kOnDeviceOnly, value);
+    // Force on-device models on if enabling on-device-only
+    if (value && !_useOnDeviceModels) {
+      _useOnDeviceModels = true;
+      await _prefs.setBool(_kUseOnDeviceModels, true);
+    }
     notifyListeners();
   }
 

@@ -61,7 +61,16 @@ class OnDeviceVisionService {
     final ready =
         await _modelManager.isModelReady(OnDeviceModel.smolvlm2Vision);
     if (!ready) {
-      debugPrint('SmolVLM2 model not downloaded yet');
+      debugPrint('SmolVLM2: model files not found or incomplete');
+      // Check what's actually on disk for diagnostics
+      final mPath =
+          await _modelManager.modelPath(OnDeviceModel.smolvlm2Vision);
+      final pPath =
+          await _modelManager.projectorPath(OnDeviceModel.smolvlm2Vision);
+      debugPrint('  Model path: $mPath exists=${File(mPath).existsSync()}');
+      if (pPath != null) {
+        debugPrint('  Projector path: $pPath exists=${File(pPath).existsSync()}');
+      }
       return false;
     }
 
@@ -71,19 +80,29 @@ class OnDeviceVisionService {
       final pPath =
           await _modelManager.projectorPath(OnDeviceModel.smolvlm2Vision);
 
+      debugPrint('SmolVLM2: loading model from $mPath '
+          '(${(File(mPath).lengthSync() / 1024 / 1024).toStringAsFixed(0)}MB)');
+
       _engine = LlamaEngine(LlamaBackend());
       await _engine!.loadModel(mPath);
+      debugPrint('SmolVLM2: model loaded, loading projector...');
 
       // Load multimodal projector for vision
       if (pPath != null) {
+        debugPrint('SmolVLM2: loading projector from $pPath '
+            '(${(File(pPath).lengthSync() / 1024 / 1024).toStringAsFixed(0)}MB)');
         await _engine!.loadMultimodalProjector(pPath);
       }
 
       _isReady = true;
       debugPrint('SmolVLM2 vision model loaded successfully');
       return true;
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Failed to load SmolVLM2: $e');
+      debugPrint('Stack: $stack');
+      try {
+        await _engine?.dispose();
+      } catch (_) {}
       _engine = null;
       _isReady = false;
       return false;

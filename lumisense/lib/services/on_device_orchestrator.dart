@@ -40,11 +40,11 @@ class OnDeviceOrchestrator {
 
   // ─── Smart Loading ──────────────────────────────────────────────────────────
 
-  /// Ensures the vision model is loaded. Returns true if ready.
+  /// Ensures the vision model is loaded and ready for inference.
   ///
-  /// If RAM is limited, this will unload the assistant model first.
-  Future<bool> ensureVisionReady({bool unloadAssistant = false}) async {
-    if (visionService.isReady) return true;
+  /// Throws [OnDeviceModelException] if the model can't be loaded.
+  Future<void> ensureVisionReady({bool unloadAssistant = false}) async {
+    if (visionService.isReady) return;
 
     // Free RAM if requested
     if (unloadAssistant && assistantService.isReady) {
@@ -52,21 +52,48 @@ class OnDeviceOrchestrator {
       await assistantService.unload();
     }
 
-    return visionService.loadModel();
+    final loaded = await visionService.loadModel();
+    if (!loaded) {
+      // Diagnose why loading failed
+      final downloaded =
+          await _modelManager.isModelReady(OnDeviceModel.smolvlm2Vision);
+      if (!downloaded) {
+        throw const OnDeviceModelException(
+          'Vision model not downloaded. Please download SmolVLM2 in Settings.',
+        );
+      }
+      throw const OnDeviceModelException(
+        'Vision model failed to load. The file may be corrupt — '
+        'try deleting and re-downloading it in Settings.',
+      );
+    }
   }
 
-  /// Ensures the assistant model is loaded. Returns true if ready.
+  /// Ensures the assistant model is loaded and ready for inference.
   ///
-  /// If RAM is limited, this will unload the vision model first.
-  Future<bool> ensureAssistantReady({bool unloadVision = false}) async {
-    if (assistantService.isReady) return true;
+  /// Throws [OnDeviceModelException] if the model can't be loaded.
+  Future<void> ensureAssistantReady({bool unloadVision = false}) async {
+    if (assistantService.isReady) return;
 
     if (unloadVision && visionService.isReady) {
       debugPrint('Unloading vision model to free RAM for assistant...');
       await visionService.unload();
     }
 
-    return assistantService.loadModel();
+    final loaded = await assistantService.loadModel();
+    if (!loaded) {
+      final downloaded =
+          await _modelManager.isModelReady(OnDeviceModel.gemma3nAssistant);
+      if (!downloaded) {
+        throw const OnDeviceModelException(
+          'Assistant model not downloaded. Please download Gemma 3n in Settings.',
+        );
+      }
+      throw const OnDeviceModelException(
+        'Assistant model failed to load. The file may be corrupt — '
+        'try deleting and re-downloading it in Settings.',
+      );
+    }
   }
 
   // ─── High-Level API ─────────────────────────────────────────────────────────

@@ -87,6 +87,7 @@ dependencies:
   llamadart: ^0.6.7
   # Resumable large file downloads (for GGUF models)
   dio: ^5.7.0
+  wakelock_plus: ^1.5.1
 
 dev_dependencies:
   flutter_test:

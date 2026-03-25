@@ -616,6 +616,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
               contentPadding: EdgeInsets.zero,
             ),
           ),
+          const SizedBox(height: 4),
+
+          // On-device only toggle (blocks cloud fallback)
+          Semantics(
+            label: 'On-device only mode. Never use cloud A I.',
+            toggled: settings.onDeviceOnly,
+            child: SwitchListTile(
+              value: settings.onDeviceOnly,
+              activeThumbColor: Colors.orange,
+              title: const Text(
+                'On-Device Only (No Cloud)',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: const Text(
+                'Never send data to cloud APIs. All AI runs locally. '
+                'Requires models to be downloaded first.',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+              onChanged: (bool value) async {
+                final TtsService tts = context.read<TtsService>();
+                await settings.setOnDeviceOnly(value);
+                if (!mounted) return;
+                HapticFeedback.mediumImpact();
+                await tts.speak(
+                  value
+                      ? 'On-device only mode. No data will leave your phone. '
+                        'Make sure models are downloaded.'
+                      : 'Cloud fallback re-enabled.',
+                );
+              },
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
           const SizedBox(height: 12),
 
           // Model cards
@@ -824,56 +860,102 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   );
                 }
 
-                final isReady = _modelReadyState[model] ?? false;
+                // Check for error state
+                return ValueListenableBuilder<String?>(
+                  valueListenable: modelMgr.downloadError[model]!,
+                  builder: (context, error, _) {
+                    final isReady = _modelReadyState[model] ?? false;
 
-                // Model ready
-                if (isReady) {
-                  return Row(
-                    children: [
-                      const Icon(Icons.check_circle,
-                          color: AppTheme.success, size: 18),
-                      const SizedBox(width: 6),
-                      const Text('Ready',
-                          style: TextStyle(
-                              color: AppTheme.success,
-                              fontWeight: FontWeight.w600)),
-                      const Spacer(),
-                      TextButton.icon(
-                        onPressed: () async {
-                          await modelMgr.deleteModel(model);
-                          HapticFeedback.mediumImpact();
-                          if (mounted) {
-                            await _refreshModelReadyState();
-                            context.read<TtsService>().speak(
-                                '${info.displayName} deleted.');
-                          }
-                        },
-                        icon: const Icon(Icons.delete_outline,
-                            size: 18, color: AppTheme.error),
-                        label: const Text('Delete',
-                            style:
-                                TextStyle(color: AppTheme.error)),
-                      ),
-                    ],
-                  );
-                }
+                    // Model ready
+                    if (isReady && error == null) {
+                      return Row(
+                        children: [
+                          const Icon(Icons.check_circle,
+                              color: AppTheme.success, size: 18),
+                          const SizedBox(width: 6),
+                          const Text('Ready',
+                              style: TextStyle(
+                                  color: AppTheme.success,
+                                  fontWeight: FontWeight.w600)),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () async {
+                              await modelMgr.deleteModel(model);
+                              HapticFeedback.mediumImpact();
+                              if (mounted) {
+                                await _refreshModelReadyState();
+                                context.read<TtsService>().speak(
+                                    '${info.displayName} deleted.');
+                              }
+                            },
+                            icon: const Icon(Icons.delete_outline,
+                                size: 18, color: AppTheme.error),
+                            label: const Text('Delete',
+                                style:
+                                    TextStyle(color: AppTheme.error)),
+                          ),
+                        ],
+                      );
+                    }
 
-                // Not downloaded
-                return SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _downloadModel(model),
-                    icon: const Icon(Icons.download, size: 18),
-                    label: Text(
-                        'Download (~${info.estimatedTotalSizeMB}MB)'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.accentBlue,
-                      foregroundColor: AppTheme.darkBackground,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                    // Error state — show message + retry
+                    if (error != null) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.error_outline,
+                                  color: AppTheme.error, size: 18),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  error,
+                                  style: const TextStyle(
+                                      color: AppTheme.error,
+                                      fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _downloadModel(model),
+                              icon: const Icon(Icons.refresh, size: 18),
+                              label: const Text('Retry Download'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.accentBlue,
+                                foregroundColor: AppTheme.darkBackground,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    // Not downloaded
+                    return SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _downloadModel(model),
+                        icon: const Icon(Icons.download, size: 18),
+                        label: Text(
+                            'Download (~${info.estimatedTotalSizeMB}MB)'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accentBlue,
+                          foregroundColor: AppTheme.darkBackground,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 );
               },
             ),
@@ -889,8 +971,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final info = ModelManager.models[model]!;
 
     HapticFeedback.mediumImpact();
+    // Clear any previous error
+    modelMgr.downloadError[model]!.value = null;
+
     await tts.speak(
-        'Downloading ${info.displayName}. This may take a few minutes on Wi-Fi.');
+        'Downloading ${info.displayName}. This may take a few minutes on Wi-Fi. '
+        'Keep the app open until it finishes.');
 
     try {
       await modelMgr.downloadModel(model);
@@ -902,7 +988,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (mounted) {
         HapticFeedback.heavyImpact();
-        await tts.speak('Download failed. Please check your internet connection and try again.');
+        final errorMsg = modelMgr.downloadError[model]!.value ??
+            'Download failed unexpectedly.';
+        await tts.speak('$errorMsg Tap retry to resume where it left off.');
       }
       debugPrint('Model download error: $e');
     }
